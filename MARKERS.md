@@ -2,17 +2,16 @@
 
 # Template markers
 
-25 markers in 12 files, each a place a repository created from this template acts on.
+26 markers in 11 files, each a place a repository created from this template acts on.
 
 - `.github/ISSUE_TEMPLATE/config.yml`: 1
 - `.github/commit-scopes.json`: 1
 - `.github/renovate.json`: 1
 - `.github/workflows/cd.yml`: 1
-- `AGENTS.md`: 3
-- `CONTRIBUTING.md`: 4
+- `AGENTS.md`: 4
+- `CONTRIBUTING.md`: 9
 - `README.md`: 2
 - `SECURITY.md`: 4
-- `docs/dev.md`: 5
 - `package.json`: 1
 - `src/cli.ts`: 1
 - `src/example.ts`: 1
