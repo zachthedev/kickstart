@@ -10,18 +10,22 @@
  * so a green run here is a green run there.
  *
  * No row resolves a program from the machine's PATH. Bun is the process
- * running this file, every package runs from its absolute path under
- * node_modules, and every other tool resolves through `mise which`. Every tool
- * that searches for a config runs with its one config named. Before any row,
- * the gate refuses to run beside a tracked env file Bun loads, a tracked
- * `.npmrc`, a tracked path under node_modules, a config a tool would read in
- * place of the one the gate names, a bunfig.toml key beside the install
- * cooldown, a .prettierrc naming a plugin or a shared config module, anything
- * that would steer how Bun resolves an import, a package
- * patch, a package bun.lock installs that node_modules lacks, a workflow shell
- * ShellCheck never reads, or a root entry named like a program or read as the
- * ShellCheck stand-in's path. No config's text is held: code-owner review is
- * the control on a change to one. Every row that walks the tree says how many
+ * running this file, every JavaScript tool starts through `bun x --bun
+ * --no-install` once the checkout's node_modules/.bin holds it, and every
+ * other tool resolves through `mise which`. Every tool that searches for a
+ * config runs with its one config named. Before any row, the gate refuses to
+ * run beside a config a tool would read in place of the one the gate names, a
+ * tracked env file Bun loads, a project config outside the named paths, a
+ * node_modules below the root, a JSON key Bun and the shared commits job read
+ * two ways, a patch a package.json names, anything that would steer how Bun
+ * resolves the gate's own imports, a workflow the workflows row would not
+ * read, or an inline zizmor waiver under .github. No config's text is held:
+ * code-owner review is the control on a change to one. The other files that
+ * run code before the gate's first line, such as a bunfig.toml preload, are
+ * refused before a merge by the shared commits and workflows jobs. A pull
+ * request cannot edit those jobs at the pin ci.yml calls, and code-owner
+ * review of .github/workflows/ is the control on a change to that pin or to
+ * the job that runs this file. Every row that walks the tree says how many
  * files it checked and fails when that is none. The rows that run the
  * repository's own code come last, and the preflight runs again after each.
  * No row carries a deadline: the CI job's timeout-minutes bounds the gate.
@@ -32,17 +36,19 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import { styleText } from 'node:util';
-// Every module imported here reads Bun and node: built-ins alone, so nothing
-// under node_modules loads before the preflight in main() refuses a planted
-// package. tools.ts imports zod and the format row imports prettier, so each
-// loads where a row needs it, once the preflight found it in the checkout's
-// node_modules rather than a parent's. github.ts takes every GitHub token out of the
-// environment when it loads, before any row starts a process.
+import type * as Prettier from 'prettier';
+// Every module imported here reads Bun and node: built-ins alone, so the
+// preflight runs and prints on a checkout with no install. tools.ts imports
+// zod and the format row imports prettier, each by its path under the
+// checkout's node_modules, so a missing install fails the row that needs it.
+// github.ts takes every GitHub token out of the environment when it loads,
+// before any row starts a process.
 import { githubToken } from './github';
-import { gitEnv, INVENTORY, topLevel, writeInventory } from './markers';
+import { INVENTORY, topLevel, writeInventory } from './markers';
 import {
   actionlintFinished,
   comparable,
+  compilerFinding,
   files,
   ignoreCommentFindings,
   inheritedCallFindings,
@@ -52,9 +58,10 @@ import {
   unreadSourceFinding,
   zizmorCompleted,
 } from './rows';
-import { describe, type Finished, fold, plain, printable, quote, run } from './run';
+import { describe, type Finished, fold, git, jsTool, plain, printable, quote, run } from './run';
 import {
   ESLINT_CONFIG,
+  isTable,
   PRETTIERIGNORE,
   PRETTIERRC,
   startupFindings,
@@ -68,18 +75,21 @@ import {
 const BUN = process.execPath;
 
 /**
- * The flag every Bun a row starts gets first, so no env file on disk sets a
- * variable inside a row's tool. Bun 1.4.2 honors it over all eight names it
- * loads, in every mode.
+ * The flag every Bun the gate starts directly gets first, so no env file on
+ * disk sets a variable inside the row: the test runs and the ShellCheck
+ * stand-in. Bun 1.4.2 honors it over all eight names it loads, in every mode.
+ * bunx ignores it, so no JavaScript tool gets it.
  */
 const NO_ENV_FILE = '--no-env-file';
 
 /**
- * The checkout's node_modules as an absolute path. The gate runs from the
- * root. Bun runs a package.json script named like a relative entry that is
- * missing, and fails with "Module not found" on a missing absolute one.
+ * Prettier's module entry under the checkout's node_modules, by path, so a
+ * missing install fails the format row rather than loading a copy from a
+ * parent directory or installing one at run time. The specifier is held in a
+ * variable, so tsc takes the types from the `import type` below it and never
+ * resolves the untyped file.
  */
-const PACKAGES = join(process.cwd(), 'node_modules');
+const PRETTIER_ENTRY = '../node_modules/prettier/index.mjs';
 
 /**
  * How many characters of file arguments one command carries. Windows caps a
@@ -89,7 +99,7 @@ const ARGUMENT_BUDGET = 24_000;
 
 // ShellCheck reads extra flags from SHELLCHECK_OPTS whatever actionlint's --norc
 // says, and one can exclude any finding, so no process the gate starts gets it.
-// run() withholds the variables every Bun reads before its own arguments.
+// run() withholds BUN_OPTIONS the same way.
 delete process.env['SHELLCHECK_OPTS'];
 
 /** A row of the gate: its name, what it checks, and the check itself. */
@@ -155,7 +165,7 @@ async function expectClean(
  * checkout holds exactly these. A new file counts once it is added.
  */
 async function trackedFiles(...pathspecs: string[]): Promise<string[]> {
-  const finished = await run(['git', 'ls-files', '-z', '--', ...pathspecs], gitEnv());
+  const finished = await git(['ls-files', '-z', '--', ...pathspecs]);
   if (finished.exitCode !== 0) {
     throw new Error(`git ls-files ${describe(finished)}`);
   }
@@ -224,13 +234,35 @@ async function tools(): Promise<undefined> {
 
 /* ///// typecheck ///// */
 
-// The native TypeScript 7 compiler, called by its alias's path because the
-// 6.x `typescript` package that typescript-eslint needs ships a tsc of its
-// own. Each project is named, so tsc never searches past the checkout for a
-// config, and scripts/ carries its own, so the root one never reaches the
-// gate's module resolution. --listFiles names every file the program read, so the row counts the ones
-// from the repository, and fails on a tracked TypeScript file that no project read.
+/** The package.json name of the native TypeScript 7 compiler the typecheck row runs. */
+const NATIVE = '@typescript/native';
+
+// The native TypeScript 7 compiler, from the `@typescript/native` alias. The
+// 6.x `typescript` package that typescript-eslint needs ships a tsc too, and
+// bun install links a command two packages claim to the one whose name sorts
+// first, so node_modules/.bin/tsc is the alias's. The row first holds
+// `tsc --version` to the major package.json pins for the alias, so a renamed
+// alias or another tie-break turns it red. Each project is named, so
+// tsc never searches past the checkout for a config, and scripts/ carries its
+// own, so the root one never reaches the gate's module resolution.
+// --listFiles names every file the program read, so the row counts the ones
+// from the repository, and fails on a tracked TypeScript file that no project
+// read.
 async function typecheck(): Promise<string> {
+  const manifest: unknown = JSON.parse(await Bun.file('package.json').text());
+  const spec =
+    isTable(manifest) && isTable(manifest['devDependencies']) ? manifest['devDependencies'][NATIVE] : undefined;
+  if (typeof spec !== 'string') {
+    throw new Error(`package.json names no ${NATIVE} in devDependencies, and the typecheck row runs that compiler`);
+  }
+  const version = await run([...jsTool('tsc'), '--version']);
+  if (version.exitCode !== 0) {
+    throw new Error(`tsc --version ${describe(version)}`);
+  }
+  const other = compilerFinding(version.stdout, spec);
+  if (other !== undefined) {
+    throw new Error(other);
+  }
   const root = comparable('.') + sep;
   const counts: number[] = [];
   const checked = new Set<string>();
@@ -238,14 +270,7 @@ async function typecheck(): Promise<string> {
     ['src, tests and eslint.config.ts', ['--project', TSCONFIG]],
     ['scripts', ['--project', 'scripts']],
   ] as const) {
-    const finished = await run([
-      BUN,
-      NO_ENV_FILE,
-      join(PACKAGES, '@typescript/native/bin/tsc'),
-      '--noEmit',
-      '--listFiles',
-      ...project,
-    ]);
+    const finished = await run([...jsTool('tsc'), '--noEmit', '--listFiles', ...project]);
     const lines = plain(finished.stdout).split('\n');
     const listed = lines.filter((line) => isAbsolutePath(line));
     if (finished.exitCode !== 0) {
@@ -308,9 +333,7 @@ function isLintResult(value: unknown): value is LintResult {
 // runs no eslint.config.* nearer a file than the root.
 async function lint(): Promise<string> {
   const finished = await run([
-    BUN,
-    NO_ENV_FILE,
-    join(PACKAGES, 'eslint/bin/eslint.js'),
+    ...jsTool('eslint'),
     '--config',
     ESLINT_CONFIG,
     '.',
@@ -331,7 +354,7 @@ async function lint(): Promise<string> {
   const problems = results.flatMap((result) =>
     result.messages.map(
       (message) =>
-        `${result.filePath}:${String(message.line ?? 0)}:${String(message.column ?? 0)}  ${message.severity === 2 ? 'error' : 'warning'}  ${message.message ?? ''}  ${message.ruleId ?? ''}`,
+        `${quote(result.filePath)}:${String(message.line ?? 0)}:${String(message.column ?? 0)}  ${message.severity === 2 ? 'error' : 'warning'}  ${message.message ?? ''}  ${message.ruleId ?? ''}`,
     ),
   );
   if (finished.exitCode !== 0) {
@@ -352,13 +375,14 @@ async function lint(): Promise<string> {
 // ignore file, and counts that list. getFileInfo runs in the gate's process
 // and resolves the config nearest each file unless told not to, a package.json
 // prettier key and the plugins it names included, so resolveConfig is off.
-// The preflight refuses a plugin in .prettierrc, which names no parser or
-// override either, so the inferred parser is the same either way. --ignore-path names .prettierignore alone, so
-// .gitignore never narrows it, and --config names the one config, so Prettier
-// searches for no other file and a config under a subdirectory never loads.
-// --no-editorconfig keeps any .editorconfig from setting an option.
+// .prettierrc holds formatting options alone, under review, so it names no
+// parser and the inferred parser is the same either way. --ignore-path names
+// .prettierignore alone, so .gitignore never narrows it, and --config names
+// the one config, so Prettier searches for no other file and a config under a
+// subdirectory never loads. --no-editorconfig keeps any .editorconfig from
+// setting an option.
 async function format(): Promise<string> {
-  const { getFileInfo } = await import('prettier');
+  const { getFileInfo } = (await import(PRETTIER_ENTRY)) as typeof Prettier;
   const checked: string[] = [];
   for (const path of await trackedFiles()) {
     const info = await getFileInfo(path, { ignorePath: PRETTIERIGNORE, resolveConfig: false });
@@ -380,9 +404,7 @@ async function format(): Promise<string> {
   }
   for (const batch of batches(checked)) {
     await expectClean('prettier', [
-      BUN,
-      NO_ENV_FILE,
-      join(PACKAGES, 'prettier/bin/prettier.cjs'),
+      ...jsTool('prettier'),
       '--check',
       '--config',
       PRETTIERRC,
@@ -421,7 +443,7 @@ async function toml(): Promise<string> {
     const missed = batch.filter((path) => !reported.has(comparable(path)));
     if (missed.length > 0 || reported.size !== batch.length) {
       throw new Error(
-        `taplo checked ${files(reported.size)} of the ${files(batch.length)} handed to it. Not checked: ${missed.join(', ')}. ${TAPLO_CONFIG} decides which it reads`,
+        `taplo checked ${files(reported.size)} of the ${files(batch.length)} handed to it. Not checked: ${missed.map((path) => quote(path)).join(', ')}. ${TAPLO_CONFIG} decides which it reads`,
       );
     }
   }
@@ -524,7 +546,9 @@ async function workflows(quick: boolean): Promise<string> {
     const linted = actionlintFinished(finished.stderr);
     const unlinted = batch.filter((path) => !linted.has(path));
     if (unlinted.length > 0) {
-      throw new Error(`actionlint finished no lint of ${unlinted.join(', ')}: ${describe(report)}`);
+      throw new Error(
+        `actionlint finished no lint of ${unlinted.map((path) => quote(path)).join(', ')}: ${describe(report)}`,
+      );
     }
   }
 
@@ -565,7 +589,7 @@ async function workflows(quick: boolean): Promise<string> {
   const unaudited = workflowFiles.filter((path) => !completed.has(path));
   if (completed.size === 0 || unaudited.length > 0) {
     throw new Error(
-      `zizmor completed ${files(completed.size)}, and these tracked workflows were not among them: ${unaudited.join(', ') || 'none'}`,
+      `zizmor completed ${files(completed.size)}, and these tracked workflows were not among them: ${unaudited.map((path) => quote(path)).join(', ') || 'none'}`,
     );
   }
   const held = await inheritedCallsHeld(await binary('zizmor'));
@@ -656,10 +680,10 @@ async function inheritedCallsHeld(zizmor: string): Promise<number> {
 // fails on purpose, and a file git does not track passes git diff, so the
 // first read refuses one. --error-unmatch refuses an untracked file whether
 // or not an ignore rule names it, and exits 1 for that alone. --no-ext-diff,
-// so a diff.external seeded through the environment cannot answer for it.
+// so a diff.external in the repository's own config cannot answer for it.
 async function markers(): Promise<string> {
   const top = await topLevel();
-  const tracked = await run(['git', '-C', top, 'ls-files', '--error-unmatch', '--', INVENTORY], gitEnv());
+  const tracked = await git(['-C', top, 'ls-files', '--error-unmatch', '--', INVENTORY]);
   if (tracked.exitCode === 1) {
     throw new Error(`${INVENTORY} is not tracked. Regenerate it with bun run markers, then: git add ${INVENTORY}`);
   }
@@ -670,11 +694,10 @@ async function markers(): Promise<string> {
   if (scanned.files === 0) {
     throw new Error('the marker scan read no file, so it checked nothing');
   }
-  await expectClean(
-    `git diff over ${INVENTORY}`,
-    ['git', '-C', top, 'diff', '--no-ext-diff', '--exit-code', '--', INVENTORY],
-    gitEnv(),
-  );
+  const diffed = await git(['-C', top, 'diff', '--no-ext-diff', '--exit-code', '--', INVENTORY]);
+  if (diffed.exitCode !== 0) {
+    throw new Error(`git diff over ${INVENTORY} ${describe(diffed)}`);
+  }
   return `${files(scanned.files)}, ${String(scanned.markers)} ${scanned.markers === 1 ? 'marker' : 'markers'}`;
 }
 
@@ -708,7 +731,7 @@ const rows: readonly Row[] = [
   {
     name: 'typecheck',
     checks:
-      'tsc --noEmit over src, tests and eslint.config.ts, then over scripts with its own tsconfig.json, counting the files each read, and every tracked TypeScript file read by one',
+      'tsc --version reporting the major package.json pins, then tsc --noEmit over src, tests and eslint.config.ts, then over scripts with its own tsconfig.json, counting the files each read, and every tracked TypeScript file read by one',
     check: typecheck,
   },
   {
@@ -778,7 +801,9 @@ async function main(): Promise<number> {
   const requested = process.argv.slice(2).filter((argument) => !argument.startsWith('--'));
   const unknown = requested.filter((name) => !rows.some((row) => row.name === name));
   if (unknown.length > 0) {
-    console.error(`no such row: ${printable(unknown.join(', '))}. bun run check:rows lists them.`);
+    console.error(
+      `no such row: ${printable(unknown.map((name) => quote(name)).join(', '))}. bun run check:rows lists them.`,
+    );
     return 1;
   }
   const selected = rows.filter((row) =>
@@ -788,14 +813,12 @@ async function main(): Promise<number> {
   console.log(dim(quick ? 'check:quick' : 'check'));
   console.log();
 
-  // Bun loaded any env file here into this process, ran any preload
-  // bunfig.toml names, and resolved this file's imports before this line. A
-  // tracked .npmrc steered the install, and a file tracked under node_modules
-  // stands in for what bun install would put there. So no row runs beside
-  // any of them. This comes before any other process the gate starts, and a
-  // single row run passes through it too. A row that runs the repository's
-  // code can write any file the preflight reads, so the preflight runs again
-  // after one, before any later row.
+  // The preflight refuses a config a row's tool would read in place of the one
+  // the row names, so no row runs beside one. It comes before any other
+  // process the gate starts but git, and a single row run passes through it
+  // too. A row that runs the repository's code can write any file the
+  // preflight reads, so the preflight runs again after one, before any later
+  // row.
   const preflight = async (after: string): Promise<boolean> => {
     const refused = [...(await trackedFindings()), ...(await startupFindings())];
     if (refused.length > 0) {

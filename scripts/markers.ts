@@ -12,7 +12,7 @@
  */
 
 import { join } from 'node:path';
-import { describe, run } from './run';
+import { describe, git } from './run';
 
 /** The generated inventory, relative to the work tree's top. */
 export const INVENTORY = 'MARKERS.md';
@@ -24,29 +24,12 @@ const MARKER = ['TODO', '(kickstart):'].join('');
 const EXCLUDE = `:!${INVENTORY}`;
 
 /**
- * The environment every git call in the gate runs under: the gate's own, with
- * every inherited `GIT_*` variable removed.
- *
- * @remarks
- * A git hook can export `GIT_DIR` and `GIT_INDEX_FILE`, and either points git
- * at a repository or an index other than the tree `-C` names. With them gone,
- * git finds the repository from the directory alone.
- */
-export function gitEnv(): Readonly<Record<string, undefined>> {
-  return Object.fromEntries(
-    Object.keys(process.env)
-      .filter((name) => /^GIT_/i.test(name))
-      .map((name) => [name, undefined]),
-  );
-}
-
-/**
  * The work tree's top directory.
  *
  * @throws When the current directory is not inside a work tree
  */
 export async function topLevel(): Promise<string> {
-  const finished = await run(['git', '-C', process.cwd(), 'rev-parse', '--show-toplevel'], gitEnv());
+  const finished = await git(['-C', process.cwd(), 'rev-parse', '--show-toplevel']);
   const top = finished.stdout.trim();
   if (finished.exitCode !== 0 || top.length === 0) {
     throw new Error(`git rev-parse --show-toplevel ${describe(finished)}`);
@@ -65,10 +48,21 @@ async function scan(top: string): Promise<ReadonlyMap<string, number>> {
   // twice. --text, because for a binary file git grep prints "Binary file
   // <path> matches" with no NUL, whatever -z says. --full-name keeps each
   // path relative to the top.
-  const finished = await run(
-    ['git', '-C', top, 'grep', '-z', '-o', '--text', '--full-name', '--untracked', '-F', MARKER, '--', '.', EXCLUDE],
-    gitEnv(),
-  );
+  const finished = await git([
+    '-C',
+    top,
+    'grep',
+    '-z',
+    '-o',
+    '--text',
+    '--full-name',
+    '--untracked',
+    '-F',
+    MARKER,
+    '--',
+    '.',
+    EXCLUDE,
+  ]);
   // git grep exits 1 when nothing matches, which is the absorbed tree.
   if (finished.exitCode === 1 && finished.stdout.length === 0) {
     return new Map();
@@ -125,10 +119,18 @@ function render(found: ReadonlyMap<string, number>): string {
  * @throws When `git ls-files` fails
  */
 async function searchedFiles(top: string): Promise<number> {
-  const finished = await run(
-    ['git', '-C', top, 'ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', '.', EXCLUDE],
-    gitEnv(),
-  );
+  const finished = await git([
+    '-C',
+    top,
+    'ls-files',
+    '-z',
+    '--cached',
+    '--others',
+    '--exclude-standard',
+    '--',
+    '.',
+    EXCLUDE,
+  ]);
   if (finished.exitCode !== 0) {
     throw new Error(`git ls-files ${describe(finished)}`);
   }

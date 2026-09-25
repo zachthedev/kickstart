@@ -16,7 +16,8 @@ The handbook's Files table says which files are copied verbatim and which have s
 1. Create the repository from this template with GitHub's "Use this template" button.
 2. Work through every template marker. `MARKERS.md` lists them, and [Template markers](#template-markers) says
    how.
-3. Install and run the gate. [docs/dev.md](docs/dev.md) names what the machine needs and the first-run commands.
+3. Install and run the gate. [CONTRIBUTING.md#setup](CONTRIBUTING.md#setup) names what the machine needs and the
+   first-run commands.
 4. Trim what the repository does not need and add what it does ([below](#trim-and-extend)). Record each deviation
    from the handbook at its drift site: a comment beside the deviating line, in the file where the change is made.
 
@@ -31,13 +32,12 @@ CI runs the same gate, by its file, on Linux, macOS and Windows. `bun run check:
 
 ## Documentation
 
-| Document                           | Holds                                                                                                       |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Setup, the gate, commit messages, where code goes, tests, code, dependencies, releases, what never happens. |
-| [docs/dev.md](docs/dev.md)         | Prerequisites, the first run, running it, generated files, tests that need a real thing.                    |
-| [SECURITY.md](SECURITY.md)         | What counts as a vulnerability here, and how to report one privately.                                       |
-| [AGENTS.md](AGENTS.md)             | What an agent reads first, runs to verify, and never does in a session. `CLAUDE.md` imports it.             |
-| [MARKERS.md](MARKERS.md)           | Generated: every file carrying a template marker, and the command that proves the template is absorbed.     |
+| Document                           | Holds                                                                                                                                            |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Setup, safety, running it, where code goes, code, tests, the gate, commit messages, dependencies, releases, troubleshooting, what never happens. |
+| [SECURITY.md](SECURITY.md)         | What counts as a vulnerability here, and how to report one privately.                                                                            |
+| [AGENTS.md](AGENTS.md)             | What an agent reads first, runs to verify, and never does in a session. `CLAUDE.md` imports it.                                                  |
+| [MARKERS.md](MARKERS.md)           | Generated: every file carrying a template marker, and the command that proves the template is absorbed.                                          |
 
 ## Template markers
 
