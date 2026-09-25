@@ -889,7 +889,17 @@ function trackFile(path: string, text: string): void {
   answerGit([path]);
 }
 
-/* ///// Workflow shells ///// */
+/* ///// Workflow names and shells ///// */
+
+// actionlint and zizmor read a workflow by its lowercase .yml name alone.
+test.each(['.github/workflows/ci.yaml', '.github/workflows/CI.YML', '.github/workflows/ci.Yml'])(
+  'a tracked workflow %p outside .github/workflows/<name>.yml is a finding',
+  async (path: string) => {
+    answerGit([path, '.github/workflows/cd.yml']);
+
+    expect(await trackedFindings()).toEqual([carrying(`${JSON.stringify(path)} is a workflow outside`)]);
+  },
+);
 
 /** A workflow whose one job runs one step, with `defaults` and `step` spliced in as written. */
 function workflow(defaults: string, step: string): string {
