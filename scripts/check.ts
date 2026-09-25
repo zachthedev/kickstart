@@ -17,17 +17,18 @@
  * run beside a config a tool would read in place of the one the gate names, a
  * tracked env file Bun loads, a project config outside the named paths, a
  * node_modules below the root, a JSON key Bun and the shared commits job read
- * two ways, a patch a package.json names, anything that would steer how Bun resolves the gate's own
- * imports, a workflow the workflows row would not read, or an inline zizmor
- * waiver under .github. No config's text is
- * held: code-owner review is the control on a change to one. The other files
- * that run code before the gate's first line, such as a bunfig.toml preload,
- * are refused before a merge by the shared commits and workflows jobs, which a
- * pull request cannot edit. Every row that walks the
- * tree says how many files it checked and fails when that is none. The rows
- * that run the repository's own code come last, and the preflight runs again
- * after each. No row carries a deadline: the CI job's timeout-minutes bounds
- * the gate.
+ * two ways, a patch a package.json names, anything that would steer how Bun
+ * resolves the gate's own imports, a workflow the workflows row would not
+ * read, or an inline zizmor waiver under .github. No config's text is held:
+ * code-owner review is the control on a change to one. The other files that
+ * run code before the gate's first line, such as a bunfig.toml preload, are
+ * refused before a merge by the shared commits and workflows jobs. A pull
+ * request cannot edit those jobs at the pin ci.yml calls, and code-owner
+ * review of .github/workflows/ is the control on a change to that pin or to
+ * the job that runs this file. Every row that walks the tree says how many
+ * files it checked and fails when that is none. The rows that run the
+ * repository's own code come last, and the preflight runs again after each.
+ * No row carries a deadline: the CI job's timeout-minutes bounds the gate.
  */
 
 import { existsSync } from 'node:fs';

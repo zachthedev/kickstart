@@ -300,9 +300,12 @@ an empty directory among them, and lists a parent repository's files without a w
 with no system or global config and nothing inherited from your environment.
 
 The shared `commits` and `workflows` jobs refuse, before a merge, the files that run code or waive a check before
-any gate row reads them. A pull request cannot edit those jobs, so the gate does not repeat them:
+any gate row reads them. A pull request cannot edit those jobs at the pin `ci.yml` calls, so the gate does not
+repeat them. Code-owner review of `.github/workflows/` is the control on a change to that pin, and on a change to
+the job that runs the gate. The shared jobs refuse:
 
 - a tracked `node_modules`, or a tracked path under one;
+- a tracked `.npmrc` at any depth, since `bun install` fetches from a registry one names;
 - a `bunfig.toml` holding any key but `[install] minimumReleaseAge`;
 - `paths` or `baseUrl` in a tracked `tsconfig.json` or `jsconfig.json` or in a file its `extends` chain reads;
 - a root file named like a program the gate, its hooks or an install start (`bun`, `bunx`, `gh`, `git`, `mise` or
@@ -311,8 +314,7 @@ any gate row reads them. A pull request cannot edit those jobs, so the gate does
 Review refuses what no row checks, since each such file sits in the diff and runs no code: anything under `dist/`,
 `coverage/`, `.claude/worktrees/` or a `.git`, `.sl`, `.svn`, `.hg` or `.jj` directory, a JavaScript or declaration
 file beyond `commitlint.config.js`, a path below a personal file's name, and a tracked
-`.claude/settings.local.json`. Review also refuses a tracked `.npmrc`, and a registry it names fails every
-package's integrity check against `bun.lock`.
+`.claude/settings.local.json`.
 
 The `tools` row reads `mise.toml` and `mise.lock` against the expectations in `scripts/tools.ts`, and installs
 from the lockfile only after that read passes. `mise.toml` holds `[tools]`, `[tool_config]` and `[settings]`
