@@ -17,7 +17,7 @@
  * run beside a config a tool would read in place of the one the gate names, a
  * tracked env file Bun loads, a project config outside the named paths, a
  * node_modules below the root, a JSON key Bun and the shared commits job read
- * two ways, anything that would steer how Bun resolves the gate's own
+ * two ways, a patch a package.json names, anything that would steer how Bun resolves the gate's own
  * imports, a workflow the workflows row would not read, or an inline zizmor
  * waiver under .github. No config's text is
  * held: code-owner review is the control on a change to one. The other files

@@ -752,12 +752,12 @@ test('the project configs expected.ts names and scripts/tsconfig.json yield no f
   expect(await trackedFindings()).toEqual([]);
 });
 
-/* ///// Keys read two ways ///// */
+/* ///// Keys the gate refuses in a tracked JSON file ///// */
 
 /** A backslash, spelled so no formatter decodes the escape it starts. */
 const BACKSLASH = String.fromCharCode(92);
 
-interface RepeatCase {
+interface KeyCase {
   readonly label: string;
   /** Every file the case writes below the working directory, by path. */
   readonly files: Readonly<Record<string, string>>;
@@ -769,12 +769,15 @@ interface RepeatCase {
   readonly refused: readonly string[];
 }
 
-const REPEATS: readonly RepeatCase[] = [
+const KEYS: readonly KeyCase[] = [
   {
     label: 'a package.json repeating a top-level key',
     files: { 'package.json': '{ "patchedDependencies": {}, "name": "a", "patchedDependencies": { "x@1.0.0": "p" } }' },
     tracked: ['package.json'],
-    refused: ['"package.json" repeats "patchedDependencies" within one object, and Bun reads the first'],
+    refused: [
+      '"package.json" carries a patchedDependencies key',
+      '"package.json" repeats "patchedDependencies" within one object, and Bun reads the first',
+    ],
   },
   {
     label: 'a nested package.json repeating a key inside an object',
@@ -788,7 +791,10 @@ const REPEATS: readonly RepeatCase[] = [
       'package.json': `{ "patchedDependencie${BACKSLASH}u0073": {}, "patchedDependencies": {} }`,
     },
     tracked: ['package.json'],
-    refused: ['"package.json" repeats "patchedDependencies" within one object'],
+    refused: [
+      '"package.json" carries a patchedDependencies key',
+      '"package.json" repeats "patchedDependencies" within one object',
+    ],
   },
   {
     label: 'a tsconfig.json repeating compilerOptions.paths',
@@ -809,7 +815,32 @@ const REPEATS: readonly RepeatCase[] = [
     label: 'a package.json that does not parse as plain JSON',
     files: { 'package.json': '{ "name": "a", }' },
     tracked: ['package.json'],
-    refused: ['"package.json" does not parse as plain JSON, so which keys it repeats is unknown'],
+    refused: ['"package.json" does not parse as plain JSON, so which keys it holds is unknown'],
+  },
+  {
+    label: 'a package.json carrying patchedDependencies beside a value nested deeper than jq reads',
+    files: {
+      'package.json': `{ "deep": ${'['.repeat(300)}${']'.repeat(300)}, "patchedDependencies": { "x@1.0.0": "patches/x.patch" } }`,
+    },
+    tracked: ['package.json'],
+    refused: [
+      '"package.json" carries a patchedDependencies key, and bun install applies each patch it names over the package bun.lock pins, so a tool a row runs can change while its pin stays the same. Remove it',
+    ],
+  },
+  {
+    label: 'a nested package.json carrying patchedDependencies, in another case',
+    files: { 'tools/sub/Package.JSON': '{ "patchedDependencies": {} }' },
+    tracked: ['tools/sub/Package.JSON'],
+    refused: ['"tools/sub/Package.JSON" carries a patchedDependencies key'],
+  },
+  {
+    label: 'patchedDependencies below the top of a package.json, or in a tsconfig.json',
+    files: {
+      'package.json': '{ "config": { "patchedDependencies": {} } }',
+      'tsconfig.json': '{ "patchedDependencies": {} }',
+    },
+    tracked: ['package.json', 'tsconfig.json'],
+    refused: [],
   },
   {
     label: 'one key in two objects, and a repeat inside a string',
@@ -834,7 +865,7 @@ const REPEATS: readonly RepeatCase[] = [
   },
 ];
 
-test.each([...REPEATS])('$label', async ({ files, tracked, untracked, refused }: RepeatCase) => {
+test.each([...KEYS])('$label', async ({ files, tracked, untracked, refused }: KeyCase) => {
   for (const [path, text] of Object.entries(files)) {
     mkdirSync(dirname(join(cwd, path)), { recursive: true });
     writeFileSync(join(cwd, path), text);

@@ -281,6 +281,9 @@ It also refuses these, tracked alone:
   its `extends` names. Bun reads the first copy where the shared `commits` job reads the last, so a repeated
   `patchedDependencies` or `paths` could pass that job while Bun applies it. A file that does not parse as plain
   JSON is refused too;
+- a `patchedDependencies` key in a tracked `package.json`, since `bun install` applies each patch it names over the
+  package `bun.lock` pins. The shared `commits` job refuses one too, but its check passes a file jq cannot parse,
+  such as one nested deeper than jq reads;
 - a `zizmor: ignore[...]` comment in a tracked file under `.github`. A waiver is an entry in `.github/zizmor.yml`.
   The shared `workflows` job refuses one too, but its search passes over a file `.gitattributes` marks `-diff`.
 
@@ -293,7 +296,7 @@ with no system or global config and nothing inherited from your environment.
 The shared `commits` and `workflows` jobs refuse, before a merge, the files that run code or waive a check before
 any gate row reads them. A pull request cannot edit those jobs, so the gate does not repeat them:
 
-- a tracked `node_modules`, or a tracked path under one, and a `patchedDependencies` key in any `package.json`;
+- a tracked `node_modules`, or a tracked path under one;
 - a `bunfig.toml` holding any key but `[install] minimumReleaseAge`;
 - `paths` or `baseUrl` in a tracked `tsconfig.json` or `jsconfig.json` or in a file its `extends` chain reads;
 - a root file named like a program the gate, its hooks or an install start (`bun`, `bunx`, `gh`, `git`, `mise` or

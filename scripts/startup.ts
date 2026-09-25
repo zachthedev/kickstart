@@ -2,8 +2,9 @@
  * The files the gate's tools find by name, refused where they would change
  * what a row checks: a config a tool with no config flag would read, a tracked
  * env file, a project config outside the named paths, a node_modules below the
- * root, a JSON key Bun and the shared commits job read two ways, a workflow
- * the workflows row would not read, and what resolves the gate's own imports.
+ * root, a JSON key Bun and the shared commits job read two ways, a patch a
+ * package.json names, a workflow the workflows row would not read, and what
+ * resolves the gate's own imports.
  *
  * @remarks
  * The gate calls {@link trackedFindings} and {@link startupFindings} before
@@ -21,7 +22,7 @@
 import type { Dirent } from 'node:fs';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { EXPECTED_PROJECT_CONFIGS } from './expected';
 import { describe, fold, git, quote } from './run';
 
@@ -192,6 +193,17 @@ const PROJECT_CONFIG_NAMES: readonly string[] = ['tsconfig.json', 'jsconfig.json
 const KEYED_NAMES: readonly string[] = ['package.json', ...PROJECT_CONFIG_NAMES];
 
 /**
+ * The `package.json` key bun install reads patches from. A patch bun.lock
+ * records with no entry here is not applied, so the manifest is the file read.
+ *
+ * @remarks
+ * The shared commits job refuses this key too, but its jq test passes when jq
+ * fails, and jq stops at a nesting depth of 256 where JSON.parse and Bun read
+ * deeper. The gate keeps this copy until that job fails closed on a jq error.
+ */
+const PATCHES_KEY = 'patchedDependencies';
+
+/**
  * Every key that appears twice within one object of `text`, which is JSON
  * that parses.
  *
@@ -239,9 +251,11 @@ function repeatedKeys(text: string): string[] {
 }
 
 /**
- * Every key the tracked JSON file `config` repeats within one object, or a
- * file its `extends` chain reads, as findings. `file` is the file read at this
- * step, and `seen` the ones read before it, so a cycle ends.
+ * Every key the gate refuses in the tracked JSON file `config`, as findings:
+ * {@link PATCHES_KEY} at the top of a `package.json`, and a key repeated
+ * within one object of the file or of a file its `extends` chain reads.
+ * `file` is the file read at this step, and `seen` the ones read before it,
+ * so a cycle ends.
  *
  * @remarks
  * Bun's package.json and tsconfig reader keeps the first of two equal keys,
@@ -250,9 +264,9 @@ function repeatedKeys(text: string): string[] {
  * Bun applies it. `extends` is followed where it names a file relative to the
  * config inside the checkout, as written or with `.json` added. The commits
  * job refuses any other. A file that does not parse as plain JSON is a
- * finding, since which keys it repeats is unknown.
+ * finding, since which keys it holds is unknown.
  */
-function repeatedKeyFindings(config: string, file: string, seen: Set<string>): string[] {
+function keyFindings(config: string, file: string, seen: Set<string>): string[] {
   const at = resolve(file);
   if (seen.has(at)) {
     return [];
@@ -267,17 +281,28 @@ function repeatedKeyFindings(config: string, file: string, seen: Set<string>): s
     parsed = JSON.parse(text);
   } catch (error: unknown) {
     return [
-      `${shown} does not parse as plain JSON, so which keys it repeats is unknown: ${quote(error instanceof Error ? error.message : String(error))}`,
+      `${shown} does not parse as plain JSON, so which keys it holds is unknown: ${quote(error instanceof Error ? error.message : String(error))}`,
     ];
+  }
+  const found: string[] = [];
+  if (
+    file === config &&
+    fold(basename(config)) === PACKAGE_JSON &&
+    isTable(parsed) &&
+    Object.hasOwn(parsed, PATCHES_KEY)
+  ) {
+    found.push(
+      `${quote(config)} carries a ${PATCHES_KEY} key, and bun install applies each patch it names over the package bun.lock pins, so a tool a row runs can change while its pin stays the same. Remove it`,
+    );
   }
   const repeated = repeatedKeys(text);
   if (repeated.length > 0) {
     return [
+      ...found,
       `${shown} repeats ${repeated.map((key) => quote(key)).join(', ')} within one object, and Bun reads the first where the shared commits job reads the last. Remove the repeat`,
     ];
   }
   const extended = isTable(parsed) ? parsed['extends'] : undefined;
-  const found: string[] = [];
   for (const target of Array.isArray(extended) ? extended : [extended]) {
     if (typeof target !== 'string' || !/^\.\.?[\\/]/.test(target)) {
       continue;
@@ -287,7 +312,7 @@ function repeatedKeyFindings(config: string, file: string, seen: Set<string>): s
     );
     const inside = next === undefined ? '..' : relative(realpathSync.native('.'), realpathSync.native(next));
     if (next !== undefined && !inside.startsWith('..') && !isAbsolute(inside)) {
-      found.push(...repeatedKeyFindings(config, next, seen));
+      found.push(...keyFindings(config, next, seen));
     }
   }
   return found;
@@ -468,7 +493,8 @@ async function topLevelFinding(): Promise<string | undefined> {
  * Every file in the tree the gate refuses to run beside, as findings: a file
  * a program in {@link CONFIG_SEARCHES} reads, a project config outside the
  * named paths, a `node_modules` directory on disk below the root, a key
- * repeated in a tracked package.json or project config, a tracked workflow
+ * repeated in a tracked package.json or project config, a
+ * `patchedDependencies` key in a tracked package.json, a tracked workflow
  * the workflows row would not read or whose shell no linter reads, and an
  * inline zizmor waiver in a tracked file under `.github`.
  *
@@ -531,7 +557,7 @@ export async function trackedFindings(): Promise<string[]> {
     }
     if (isTracked) {
       if (KEYED_NAMES.includes(segments.at(-1) ?? '') && existsSync(path)) {
-        found.push(...repeatedKeyFindings(path, path, new Set()));
+        found.push(...keyFindings(path, path, new Set()));
       }
       found.push(...workflowFindings(path, segments));
       found.push(...zizmorWaiverFindings(path, segments));
