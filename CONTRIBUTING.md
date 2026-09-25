@@ -258,7 +258,9 @@ the gate on your machine agrees with CI:
   `lefthook.yml` is missing, and a tracked `lefthook-local`, `lefthook-local.*`, `.lefthook-local` or
   `.lefthook-local.*`, which lefthook merges over `lefthook.yml`. `.gitignore` lists the local ones for your own
   use;
-- a `.config` directory at the root, which mise, lefthook and commitlint's cosmiconfig each read;
+- a `.config` directory at the root, which mise, lefthook and commitlint's cosmiconfig each read, and a root
+  `package.yaml` or a `cosmiconfig` key in the root `package.json`. cosmiconfig reads its own settings from all
+  three whatever `--config` names, and a `$import` there runs a module inside commitlint;
 - a `node_modules` directory anywhere below the root, tracked or not. Bun, tsc and typescript-eslint resolve a bare
   import from the nearest one, so it replaces the installed package for the files beside it;
 - a `tsconfig.json` or `jsconfig.json` at a path `scripts/expected.ts` does not list, tracked or not, since

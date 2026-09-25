@@ -577,25 +577,59 @@ async function scriptsFindings(): Promise<string[]> {
 
 /* ///// The root ///// */
 
+/** The manifest at the root, where cosmiconfig reads a key of its own. */
+const PACKAGE_JSON = 'package.json';
+
+/** The key of {@link PACKAGE_JSON} cosmiconfig reads its own settings from. */
+const COSMICONFIG_KEY = 'cosmiconfig';
+
 /**
- * A finding for each root entry named `.config` in any case, since mise,
- * lefthook and commitlint's cosmiconfig each read a config from it whatever a
- * flag names.
+ * Every root entry a tool reads a config from whatever a flag names, as
+ * findings: a `.config` and a `package.yaml`, in any case, and a
+ * {@link COSMICONFIG_KEY} key in the root {@link PACKAGE_JSON}.
+ *
+ * @remarks
+ * commitlint searches through cosmiconfig, which reads its own settings from
+ * the root package.json, package.yaml and .config before it loads the config
+ * commitlint's `--config` names, and a `$import` there runs the module it
+ * names inside commitlint. mise and lefthook read the root .config too. The
+ * shared commits job refuses the root .config alone.
  */
-async function configDirectoryFindings(): Promise<string[]> {
-  return (await readdir('.', { withFileTypes: true }))
-    .filter((entry) => fold(entry.name) === '.config')
-    .map(
-      (entry) =>
+async function metaConfigFindings(): Promise<string[]> {
+  const found: string[] = [];
+  for (const entry of await readdir('.', { withFileTypes: true })) {
+    const name = fold(entry.name);
+    if (name === '.config') {
+      found.push(
         `${quote(entry.name)} is at the root, and mise, lefthook and commitlint's cosmiconfig each read a config from it whatever a flag names. Remove it`,
+      );
+    }
+    if (name === 'package.yaml') {
+      found.push(
+        `${quote(entry.name)} is at the root, and commitlint's cosmiconfig reads its settings from it whatever --config names, a $import that runs a module among them. Remove it`,
+      );
+    }
+  }
+  let manifest: unknown;
+  try {
+    manifest = JSON.parse(readFileSync(PACKAGE_JSON, 'utf8'));
+  } catch {
+    // A missing manifest names no key, and the tracked listing refuses one that does not parse.
+    manifest = undefined;
+  }
+  if (isTable(manifest) && Object.hasOwn(manifest, COSMICONFIG_KEY)) {
+    found.push(
+      `${PACKAGE_JSON} carries a ${quote(COSMICONFIG_KEY)} key, and commitlint's cosmiconfig reads its settings from it whatever --config names, a $import that runs a module among them. Remove it`,
     );
+  }
+  return found;
 }
 
 /**
  * Every way what Bun reads to resolve the gate's own imports, or a root
- * config directory several tools read whatever a flag names, would change
- * what a row checks, as findings.
+ * config several tools read whatever a flag names, would change what a row
+ * checks, as findings.
  */
 export async function startupFindings(): Promise<string[]> {
-  return [...(await scriptsFindings()), ...(await configDirectoryFindings())];
+  return [...(await scriptsFindings()), ...(await metaConfigFindings())];
 }
