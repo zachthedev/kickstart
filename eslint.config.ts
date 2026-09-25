@@ -21,8 +21,8 @@ export default defineConfig(
   // reason after `--`. The recommended set refuses a disable that names no
   // rule or is never closed, and require-description refuses one with no
   // reason. The gate's visible-reason rule refuses a reason there or on a
-  // TypeScript waiver comment that holds no letter or digit once the
-  // characters that print nothing are removed. ESLint reports a directive
+  // TypeScript waiver comment that holds no letter or digit once
+  // default-ignorable code points are removed. ESLint reports a directive
   // that silences nothing, and the lint row allows no warning.
   comments.recommended,
   {

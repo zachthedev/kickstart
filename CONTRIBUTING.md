@@ -139,10 +139,10 @@ apply. -->
   `@ts-ignore` and `@ts-nocheck` are refused. The gate's own ESLint rule, in `scripts/eslint-plugin.ts`, reads every
   comment ESLint parses: each `eslint`, `eslint-disable`, `eslint-disable-line`, `eslint-disable-next-line`,
   `eslint-enable`, `eslint-env`, `global`, `globals` and `exported` directive, and each `@ts-expect-error` or
-  `@ts-ignore`. It refuses a reason that holds no letter or digit once the characters that print nothing are
-  removed, such as a soft hyphen, a word joiner or a Braille blank, which the eslint-comments plugin and
-  ban-ts-comment accept. Nothing checks a reason on Prettier's ignore comment, so the `format` row refuses the
-  comment itself.
+  `@ts-ignore`. It refuses a reason that holds no letter or digit once default-ignorable code points are removed.
+  The eslint-comments plugin and ban-ts-comment accept a reason of a soft hyphen, a word joiner or a Braille blank
+  alone, and the rule refuses each. Nothing checks a reason on Prettier's ignore comment, so the `format` row
+  refuses the comment itself.
 - An import carries `with { type: 'json' }` or no attribute, and a dynamic import takes no options. ESLint refuses
   any other attribute, since Bun runs a file of any extension as code under one naming a loader, and no row reads
   a `.txt` as code.

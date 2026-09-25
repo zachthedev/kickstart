@@ -73,13 +73,16 @@ function waiverIn(type: string, value: string): Waiver | undefined {
  * eslint-comments' require-description and ban-ts-comment accept a reason
  * made only of characters that print nothing, such as U+00AD or U+2800, or
  * of symbols alone. U+3164 is default-ignorable though Unicode files it as a
- * letter, so the strip comes before the test.
+ * letter, so the strip comes before the test. The rule holds a reason to a
+ * letter or a digit and to nothing more: a letter some fonts draw blank, such
+ * as U+13441, passes.
  */
 export const visibleReason: Rule.RuleModule = {
   meta: {
     type: 'problem',
     docs: {
-      description: 'Require every ESLint directive and TypeScript waiver comment to give a reason in visible words',
+      description:
+        'Require every ESLint directive and TypeScript waiver comment to give a reason holding a letter or a digit once default-ignorable code points are removed',
     },
     schema: [],
     messages: {
