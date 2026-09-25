@@ -1,0 +1,52 @@
+name: cd
+
+# Everything after a merge. A push to main keeps the release pull request open, and merging that
+# pull request makes the next push tag the merge commit and draft the release. This repository
+# ships no artifact, so publish attaches nothing and flips the draft public under the release
+# environment's reviewer.
+#
+# No job here runs the gate. What keeps a red tree off main is the branch ruleset's required
+# checks, and what keeps a tag off any other commit is the tag ruleset with the releaser app as
+# its one bypass actor. Both are repository settings, not steps.
+#
+# TODO(kickstart): start this repository's own release history before its first release: delete
+# CHANGELOG.md, write {} into .release-please-manifest.json and set the version in package.json
+# to 0.0.0, so the first release is 0.1.0 and its changelog holds this repository's commits
+# alone. That is the one hand edit those three files take, made before release-please writes
+# any of them here, so the exception sentence in CONTRIBUTING.md#what-never-happens and in
+# AGENTS.md goes with this comment. A service also adds its deploy job here, chained on publish.
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  # The called job names the release-pr environment, so its variable and secret resolve from
+  # this repository's environment of that name. This job runs in no environment, so it cannot
+  # pass an environment secret by name. inherit is the one form that reaches it. Every
+  # credential the called job uses is the app's, so the job token gets nothing.
+  release-pr:
+    # On the job, not the workflow: two pushes in a row must not race over the release pull
+    # request, and cancel-in-progress would abandon a half-written one.
+    concurrency:
+      group: release-main
+      cancel-in-progress: false
+    permissions: {}
+    uses: zachthedev/.github/.github/workflows/release-pr.yml@09a9a00aae657ea11e5d5979ef3ce5859d9aba3a # v0.2.0
+    secrets: inherit
+
+  # After a release was drafted. The calling job grants what the called job declares, the
+  # attestation scopes included, because the declaration is static and the attest step is
+  # skipped with no artifacts. No secret: the job uses the job token alone.
+  publish:
+    needs: release-pr
+    if: needs.release-pr.outputs.released == 'true'
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    uses: zachthedev/.github/.github/workflows/publish.yml@09a9a00aae657ea11e5d5979ef3ce5859d9aba3a # v0.2.0
+    with:
+      tag: ${{ needs.release-pr.outputs.tag }}
+      flip: true

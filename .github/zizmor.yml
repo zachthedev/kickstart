@@ -1,0 +1,25 @@
+# zizmor's settings for this repository. Every audit not named here runs at zizmor's defaults.
+rules:
+  # Every action is pinned to a commit, including the ones GitHub publishes. A tag can be
+  # retargeted by its owner with no pull request and no cooldown, and this is what refuses one.
+  unpinned-uses:
+    config:
+      policies:
+        '*': hash-pin
+  # An advisory published against an unchanged action pin turns every pull request's workflows
+  # check red until the pin moves. A waiver is one GHSA id per entry, with a comment beside it
+  # naming the advisory, what it blocks, why shipping is safer and the condition that removes it.
+  # No advisory is waived.
+  known-vulnerable-actions:
+    config:
+      allow: []
+  # cd.yml's release-pr job and deps.yml's deps job hand their called workflow every secret. Each
+  # called job names an environment, and a caller that runs in none cannot pass that environment's
+  # secret by name. The comment above each job says so. Each entry names a file, and a file entry
+  # waives every job there that passes secrets: inherit, whatever it calls. The gate's workflows row
+  # binds the callee: it reads zizmor with no config and refuses any such job whose uses is not a
+  # reusable workflow of zachthedev/.github.
+  secrets-inherit:
+    ignore:
+      - cd.yml
+      - deps.yml

@@ -1,0 +1,14 @@
+[
+  {
+    "scope": "kickstart",
+    "covers": "TODO(kickstart): replace this vocabulary with your project's scopes, one per part of the repository a commit can change. Until then this scope covers the commits that absorb the template."
+  },
+  { "scope": "example", "covers": "The placeholder module and command under src/ and their tests" },
+  {
+    "scope": "gate",
+    "covers": "The scripts under scripts/, the tools mise.toml pins, the linter config and the hooks"
+  },
+  { "scope": "deps", "covers": "Dependency updates, which Renovate opens under this scope" },
+  { "scope": "docs", "covers": "README.md, CONTRIBUTING.md, SECURITY.md, AGENTS.md and the documents under docs/" },
+  { "scope": "release", "covers": "release-please's configuration and manifest" }
+]

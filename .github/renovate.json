@@ -1,0 +1,14 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": [
+    "TODO(kickstart): drop the template preset from extends, and name your kind's preset: bun-tooling for a repository that ships nothing, bun-service for a deployed one. The template layer is for a template repository alone."
+  ],
+  "extends": ["github>zachthedev/.github//renovate/bun-tooling", "github>zachthedev/.github//renovate/template"],
+  "packageRules": [
+    {
+      "description": "typescript stays below 6.1.0, the top of typescript-eslint's typescript peer range, because typescript-eslint reads types through the 6.x compiler API that TypeScript 7 does not expose, until typescript-eslint supports TypeScript 7 and this rule and the @typescript/native alias both go: https://typescript-eslint.io/users/dependency-versions",
+      "matchDepNames": ["typescript"],
+      "allowedVersions": "<6.1.0"
+    }
+  ]
+}
