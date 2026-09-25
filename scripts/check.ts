@@ -18,7 +18,8 @@
  * tracked env file Bun loads, a project config outside the named paths, a
  * node_modules below the root, a JSON key Bun and the shared commits job read
  * two ways, anything that would steer how Bun resolves the gate's own
- * imports, or a workflow the workflows row would not read. No config's text is
+ * imports, a workflow the workflows row would not read, or an inline zizmor
+ * waiver under .github. No config's text is
  * held: code-owner review is the control on a change to one. The other files
  * that run code before the gate's first line, such as a bunfig.toml preload,
  * are refused before a merge by the shared commits and workflows jobs, which a
@@ -46,6 +47,7 @@ import { INVENTORY, topLevel, writeInventory } from './markers';
 import {
   actionlintFinished,
   comparable,
+  compilerFinding,
   files,
   ignoreCommentFindings,
   inheritedCallFindings,
@@ -58,6 +60,7 @@ import {
 import { describe, type Finished, fold, git, jsTool, plain, printable, quote, run } from './run';
 import {
   ESLINT_CONFIG,
+  isTable,
   PRETTIERIGNORE,
   PRETTIERRC,
   startupFindings,
@@ -230,16 +233,35 @@ async function tools(): Promise<undefined> {
 
 /* ///// typecheck ///// */
 
+/** The package.json name of the native TypeScript 7 compiler the typecheck row runs. */
+const NATIVE = '@typescript/native';
+
 // The native TypeScript 7 compiler, from the `@typescript/native` alias. The
 // 6.x `typescript` package that typescript-eslint needs ships a tsc too, and
 // bun install links a command two packages claim to the one whose name sorts
-// first, so node_modules/.bin/tsc is the alias's. Each project is named, so
+// first, so node_modules/.bin/tsc is the alias's. The row first holds
+// `tsc --version` to the major package.json pins for the alias, so a renamed
+// alias or another tie-break turns it red. Each project is named, so
 // tsc never searches past the checkout for a config, and scripts/ carries its
 // own, so the root one never reaches the gate's module resolution.
 // --listFiles names every file the program read, so the row counts the ones
 // from the repository, and fails on a tracked TypeScript file that no project
 // read.
 async function typecheck(): Promise<string> {
+  const manifest: unknown = JSON.parse(await Bun.file('package.json').text());
+  const spec =
+    isTable(manifest) && isTable(manifest['devDependencies']) ? manifest['devDependencies'][NATIVE] : undefined;
+  if (typeof spec !== 'string') {
+    throw new Error(`package.json names no ${NATIVE} in devDependencies, and the typecheck row runs that compiler`);
+  }
+  const version = await run([...jsTool('tsc'), '--version']);
+  if (version.exitCode !== 0) {
+    throw new Error(`tsc --version ${describe(version)}`);
+  }
+  const other = compilerFinding(version.stdout, spec);
+  if (other !== undefined) {
+    throw new Error(other);
+  }
   const root = comparable('.') + sep;
   const counts: number[] = [];
   const checked = new Set<string>();
@@ -708,7 +730,7 @@ const rows: readonly Row[] = [
   {
     name: 'typecheck',
     checks:
-      'tsc --noEmit over src, tests and eslint.config.ts, then over scripts with its own tsconfig.json, counting the files each read, and every tracked TypeScript file read by one',
+      'tsc --version reporting the major package.json pins, then tsc --noEmit over src, tests and eslint.config.ts, then over scripts with its own tsconfig.json, counting the files each read, and every tracked TypeScript file read by one',
     check: typecheck,
   },
   {

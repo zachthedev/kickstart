@@ -47,6 +47,28 @@ export function unreadSourceFinding(tracked: readonly string[], read: ReadonlySe
   return `no project reads ${unread.map((path) => quote(path)).join(', ')}, so tsc never reads ${unread.length === 1 ? 'it' : 'them'}. Add each to a project's include`;
 }
 
+/**
+ * A finding when `printed`, what `tsc --version` printed, names a major
+ * version other than the one `spec`, the package.json entry of the compiler
+ * the typecheck row runs, pins, or undefined when the two agree.
+ *
+ * @remarks
+ * Two packages ship a `tsc`, and bun install links `node_modules/.bin/tsc` to
+ * the one whose name sorts first. A renamed alias or another tie-break would
+ * run the other compiler with the row still green.
+ */
+export function compilerFinding(printed: string, spec: string): string | undefined {
+  const pinned = /(\d+)\.\d+\.\d+$/.exec(spec)?.[1];
+  if (pinned === undefined) {
+    return `package.json pins the compiler as ${quote(spec)}, which names no version, so which tsc should answer is unknown`;
+  }
+  const reported = /^Version (\d+)\.\d+\.\d+/m.exec(plain(printed))?.[1];
+  if (reported !== pinned) {
+    return `tsc --version printed ${quote(plain(printed).trim())}, and package.json pins major ${pinned}, so node_modules/.bin/tsc is another package's compiler`;
+  }
+  return undefined;
+}
+
 /* ///// Test counts ///// */
 
 /** The line bun test ends its summary with. */
