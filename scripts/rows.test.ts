@@ -11,7 +11,7 @@ import {
   unreadSourceFinding,
   zizmorCompleted,
 } from './rows';
-import { type Finished, plain, printable } from './run';
+import { type Finished, plain, printable, quote } from './run';
 
 /** An asymmetric matcher for a finding carrying `fragment`. */
 function carrying(fragment: string): string {
@@ -46,6 +46,19 @@ test('printable escapes every control character but tab and newline, and every i
   const line = `a${BEL}b\tc${ESC}[2Kd\re${String.fromCharCode(0x202e)}f${String.fromCharCode(0x85)}g\r\nh`;
 
   expect(printable(line)).toBe('a\\u0007b\tc\\u001b[2Kd\\u000de\\u202ef\\u0085g\nh');
+});
+
+// A runner reads a line of a job's log that starts with :: as a workflow
+// command, and it breaks lines at a carriage return as at a newline.
+test.each([
+  ['a newline', `docs/a\n::error::x.md`, '"docs/a\\n::error::x.md"'],
+  ['a carriage return', `docs/a\r::error::x.md`, '"docs/a\\r::error::x.md"'],
+  ['both', `a\r\n::warning::b`, '"a\\r\\n::warning::b"'],
+])('quote keeps input holding %s on one line, escaped', (_label: string, input: string, expected: string) => {
+  const quoted = quote(input);
+
+  expect(quoted).toBe(expected);
+  expect(printable(`finding: ${quoted}`).split('\n')).toHaveLength(1);
 });
 
 /* ///// Test counts ///// */

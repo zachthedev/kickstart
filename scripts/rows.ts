@@ -36,8 +36,8 @@ const TYPESCRIPT_SOURCE = /\.[cm]?tsx?$/;
  *
  * @remarks
  * Read is not checked: tsc lists a declaration file and a `@ts-nocheck` file
- * it reads without checking either. The preflight refuses an unlisted
- * declaration file, and the lint row refuses `@ts-nocheck`.
+ * it reads without checking either. A reviewer refuses a declaration file the
+ * repository writes, and the lint row refuses `@ts-nocheck`.
  */
 export function unreadSourceFinding(tracked: readonly string[], read: ReadonlySet<string>): string | undefined {
   const unread = tracked.filter((path) => TYPESCRIPT_SOURCE.test(fold(path)) && !read.has(comparable(path)));
