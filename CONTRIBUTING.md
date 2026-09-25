@@ -59,11 +59,12 @@ read.
 
 What reaches the tools from your own environment:
 
-- `BUN_OPTIONS` reaches every direct Bun start: the gate's own `bun test`, `bun -e` and `bun <file>` rows, and the
-  `prepare` script's lefthook install. A `--preload` in it runs a module first in each. The gate withholds it from
-  the processes it starts, and a tool started through `bunx --bun --no-install` does not read it. Leave it unset.
+- `BUN_OPTIONS` reaches every direct Bun start: the gate itself through `bun run check`, `check:quick`,
+  `check:rows` and the push hook, `bun run markers`, and the `prepare` script's lefthook install. A `--preload` in
+  it runs a module first in each. The gate withholds it from the processes it starts, and a tool started through
+  `bunx --bun --no-install` does not read it. Leave it unset.
 - `BUN_INSPECT`, `BUN_INSPECT_CONNECT_TO` and `BUN_INSPECT_PRELOAD`. Leave them unset too. The last runs a module in
-  every Bun start, and nothing in the hooks or the gate clears them.
+  every direct Bun start, the gate's `bun test` rows among them, and nothing in the hooks or the gate clears them.
 - A personal env file. bunx ignores `--no-env-file`, so an untracked `.env` reaches every JavaScript tool the hooks,
   the `format` script and the gate's rows start, and can change what one reports
   ([Troubleshooting](#troubleshooting)).
@@ -499,8 +500,9 @@ A local run that fails or disagrees with CI:
 - A personal env file reaches every JavaScript tool bunx starts, the hooks, the `format` script and the gate's
   rows alike, since bunx ignores `--no-env-file`. A value there, such as `PRETTIER_EXPERIMENTAL_CLI`, can turn a
   row red locally alone. Move the file aside and run again ([Safety](#safety)).
-- A row that differs from CI can come from `BUN_OPTIONS`, `BUN_INSPECT`, `BUN_INSPECT_CONNECT_TO` or
-  `BUN_INSPECT_PRELOAD` in your environment. Leave all four unset ([Safety](#safety)).
+- A gate that differs from CI can come from your environment. `BUN_OPTIONS` reaches the gate's own process
+  before its first line, and `BUN_INSPECT`, `BUN_INSPECT_CONNECT_TO` and `BUN_INSPECT_PRELOAD` reach its `bun test`
+  rows too. Leave all four unset ([Safety](#safety)).
 - A local gate can pass where CI's `commits` or `workflows` job fails, since those jobs refuse files the gate
   does not repeat ([The gate](#the-gate)).
 - A `workflows` row that differs from CI can come from zizmor's online audits. They run on your machine when gh
