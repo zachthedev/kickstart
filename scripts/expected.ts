@@ -4,11 +4,11 @@
  *
  * @remarks
  * scripts/run.ts, scripts/tools.ts, scripts/startup.ts, scripts/rows.ts,
- * scripts/github.ts, scripts/shellcheck.ts and scripts/stand-ins.ts are the
- * same in every repository of the set, and startup.ts reads this module for
- * the rest. No config's text is held here: code-owner review is the control on
- * a change to one. The preflight loads this module before any check, so it
- * imports nothing.
+ * scripts/github.ts, scripts/shellcheck.ts, scripts/eslint-plugin.ts and
+ * scripts/stand-ins.ts are the same in every repository of the set, and
+ * startup.ts reads this module for the rest. No config's text is held here:
+ * code-owner review is the control on a change to one. The preflight loads
+ * this module before any check, so it imports nothing.
  */
 
 /**

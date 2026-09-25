@@ -69,49 +69,6 @@ export function compilerFinding(printed: string, spec: string): string | undefin
   return undefined;
 }
 
-/* ///// ESLint directive reasons ///// */
-
-/** Every code point Unicode lists as default-ignorable, none of which prints. */
-const IGNORABLE = /\p{Default_Ignorable_Code_Point}/gu;
-
-/** Every line comment, to its line's end, and every block comment, to its first close. */
-const COMMENT = /\/\/([^\n]*)|\/\*([\s\S]*?)\*\//g;
-
-/** The directives whose reason eslint-comments' require-description reads, at the start of a comment. */
-const DISABLE_DIRECTIVE = /^eslint-disable(?:-next-line|-line)?(?=\s|$)/;
-
-/** What ESLint splits a directive from its reason at: two or more hyphens between whitespace. */
-const REASON_SEPARATOR = /\s-{2,}\s/u;
-
-/**
- * A finding for every `eslint-disable`, `eslint-disable-next-line` or
- * `eslint-disable-line` directive in `text`, the file at `path`, whose reason
- * is empty once default-ignorable code points and whitespace are removed.
- *
- * @remarks
- * require-description accepts a reason made only of U+00AD, U+2060 or U+3164,
- * which prints nothing, and no-irregular-whitespace catches U+200B alone. A
- * directive with no reason at all is require-description's to refuse, so it
- * yields nothing here. A comment is matched by its opener anywhere, a string
- * holding one included, which costs a false refusal at worst.
- */
-export function invisibleReasonFindings(path: string, text: string): string[] {
-  return [...text.matchAll(COMMENT)].flatMap((match) => {
-    const value = (match[1] ?? match[2] ?? '').trim();
-    if (!DISABLE_DIRECTIVE.test(value)) {
-      return [];
-    }
-    const [, ...reason] = value.split(REASON_SEPARATOR);
-    if (reason.length === 0 || reason.join(' ').replace(IGNORABLE, '').trim().length > 0) {
-      return [];
-    }
-    const line = text.slice(0, match.index).split('\n').length;
-    return [
-      `${quote(path)} line ${String(line)} carries an ESLint directive whose reason is empty once invisible characters are removed, which eslint-comments accepts. Write the reason in visible words`,
-    ];
-  });
-}
-
 /* ///// Test counts ///// */
 
 /** The line bun test ends its summary with. */

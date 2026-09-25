@@ -112,9 +112,10 @@ apply. -->
 - `scripts/`: the gate. `check.ts` is the runner, `startup.ts` holds what the gate refuses before its rows,
   `expected.ts` lists where this repository's project configs sit, `tools.ts` holds the mise expectations,
   `run.ts` starts every process, `rows.ts` holds what the rows conclude from their tools' output, `github.ts` reads
-  gh's token, `shellcheck.ts` stands in for ShellCheck under actionlint, and `markers.ts` writes `MARKERS.md`.
-  `run.ts`, `tools.ts`, `startup.ts`, `rows.ts`, `github.ts`, `shellcheck.ts` and `stand-ins.ts`, with the suites
-  beside them, are the same in every repository of the set.
+  gh's token, `shellcheck.ts` stands in for ShellCheck under actionlint, `eslint-plugin.ts` holds the ESLint rule
+  `eslint.config.ts` loads, and `markers.ts` writes `MARKERS.md`. `run.ts`, `tools.ts`, `startup.ts`, `rows.ts`,
+  `github.ts`, `shellcheck.ts`, `eslint-plugin.ts` and `stand-ins.ts`, with the suites beside them, are the same
+  in every repository of the set.
 - `docs/`, once a repository carries one: the documents [README.md#documentation](README.md#documentation) indexes.
 
 ## Code
@@ -133,10 +134,14 @@ apply. -->
   `eslint.config.ts` with its reason beside it.
 - A waiver in code names exactly what it waives and says why, and a linter checks both. An ESLint directive names
   each rule and gives its reason after `--`, as in `// eslint-disable-next-line no-debugger -- reason`, and a
-  disable is closed by its enable. The `lint` row refuses a reason made only of characters that print nothing,
-  such as a soft hyphen or a word joiner, which the eslint-comments plugin accepts. `@ts-expect-error` carries a description of ten characters or more, and
-  `@ts-ignore` and `@ts-nocheck` are refused. Nothing checks a reason on Prettier's ignore comment, so the `format`
-  row refuses the comment itself.
+  disable is closed by its enable. `@ts-expect-error` carries a description of ten characters or more, and
+  `@ts-ignore` and `@ts-nocheck` are refused. The gate's own ESLint rule, in `scripts/eslint-plugin.ts`, reads every
+  comment ESLint parses: each `eslint`, `eslint-disable`, `eslint-disable-line`, `eslint-disable-next-line`,
+  `eslint-enable`, `eslint-env`, `global`, `globals` and `exported` directive, and each `@ts-expect-error` or
+  `@ts-ignore`. It refuses a reason that holds no letter or digit once the characters that print nothing are
+  removed, such as a soft hyphen, a word joiner or a Braille blank, which the eslint-comments plugin and
+  ban-ts-comment accept. Nothing checks a reason on Prettier's ignore comment, so the `format` row refuses the
+  comment itself.
 - An import carries `with { type: 'json' }` or no attribute, and a dynamic import takes no options. ESLint refuses
   any other attribute, since Bun runs a file of any extension as code under one naming a loader, and no row reads
   a `.txt` as code.

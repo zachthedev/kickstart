@@ -33,7 +33,7 @@
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, relative, sep } from 'node:path';
+import { join, sep } from 'node:path';
 import { styleText } from 'node:util';
 import type * as Prettier from 'prettier';
 // Every module imported here reads Bun and node: built-ins alone, so the
@@ -52,7 +52,6 @@ import {
   ignoreCommentFindings,
   inheritedCallFindings,
   inheritedCalls,
-  invisibleReasonFindings,
   taploFound,
   testCount,
   unreadSourceFinding,
@@ -364,16 +363,6 @@ async function lint(): Promise<string> {
   }
   if (results.length === 0) {
     throw new Error('eslint linted no file, so it checked nothing');
-  }
-  // eslint-comments takes a reason that prints nothing, so the row refuses a
-  // directive whose reason is invisible in every file ESLint linted.
-  const invisible: string[] = [];
-  for (const result of results) {
-    const path = relative(process.cwd(), result.filePath).replaceAll('\\', '/');
-    invisible.push(...invisibleReasonFindings(path, await Bun.file(result.filePath).text()));
-  }
-  if (invisible.length > 0) {
-    throw new Error(invisible.join('\n'));
   }
   return files(results.length);
 }
@@ -768,8 +757,7 @@ const rows: readonly Row[] = [
   },
   {
     name: 'lint',
-    checks:
-      'eslint over the tree with eslint.config.ts alone and no warnings allowed, counting the files it linted, and no disable directive in them whose reason is invisible',
+    checks: 'eslint over the tree with eslint.config.ts alone and no warnings allowed, counting the files it linted',
     check: lint,
     runsCode: true,
   },
