@@ -7,6 +7,7 @@ import {
   type InheritedCall,
   inheritedCallFindings,
   inheritedCalls,
+  invisibleReasonFindings,
   taploFound,
   testCount,
   unreadSourceFinding,
@@ -245,6 +246,51 @@ test.each([
   ['a pin naming no version', 'Version 7.0.2\n', 'npm:typescript@latest', 'which names no version'],
 ])('%s is a finding', (_label: string, printed: string, spec: string, fragment: string) => {
   expect(compilerFinding(printed, spec)).toEqual(carrying(fragment));
+});
+
+/* ///// ESLint directive reasons ///// */
+
+// Each invisible character is built from its code point, so none is written
+// into this file, where the lint row reads it.
+const invisible = (codePoint: number): string => String.fromCodePoint(codePoint);
+
+test.each([
+  ['a soft hyphen', 0xad],
+  ['a word joiner', 0x2060],
+  ['a Hangul filler', 0x3164],
+  ['a zero-width space', 0x200b],
+])('a next-line directive whose reason is only %s is a finding', (_label: string, codePoint: number) => {
+  const text = `const a = 1;\n// eslint-disable-next-line no-debugger -- ${invisible(codePoint)}\ndebugger;\n`;
+
+  expect(invisibleReasonFindings('src/a.ts', text)).toEqual([
+    carrying('"src/a.ts" line 2 carries an ESLint directive whose reason is empty once invisible characters'),
+  ]);
+});
+
+test.each([
+  ['a block disable', `/* eslint-disable no-console -- ${invisible(0x2060)} */\nconsole.log(1);\n`, 1],
+  [
+    'a same-line disable',
+    `debugger; // eslint-disable-line no-debugger -- ${invisible(0xad)}${invisible(0x200b)}\n`,
+    1,
+  ],
+  [
+    'a reason of spaces around an invisible mark',
+    `\n\n// eslint-disable-next-line no-debugger --  ${invisible(0x3164)}  \n`,
+    3,
+  ],
+])('%s whose reason is invisible is a finding at its line', (_label: string, text: string, line: number) => {
+  expect(invisibleReasonFindings('src/a.ts', text)).toEqual([carrying(`"src/a.ts" line ${String(line)} carries`)]);
+});
+
+test.each([
+  ['a visible reason after an invisible mark', `// eslint-disable-next-line no-debugger -- ${invisible(0x2060)}why\n`],
+  ['no reason at all, which require-description refuses', '// eslint-disable-next-line no-debugger\n'],
+  ['a block reason on the next line', '/* eslint-disable no-console --\n   the reason */\n'],
+  ['an enable with an invisible reason', `/* eslint-enable no-console -- ${invisible(0xad)} */\n`],
+  ['the word in prose', `// Explains eslint-disable -- ${invisible(0xad)}\n`],
+])('%s yields nothing', (_label: string, text: string) => {
+  expect(invisibleReasonFindings('src/a.ts', text)).toEqual([]);
 });
 
 /* ///// Prettier ignore comments ///// */

@@ -133,7 +133,8 @@ apply. -->
   `eslint.config.ts` with its reason beside it.
 - A waiver in code names exactly what it waives and says why, and a linter checks both. An ESLint directive names
   each rule and gives its reason after `--`, as in `// eslint-disable-next-line no-debugger -- reason`, and a
-  disable is closed by its enable. `@ts-expect-error` carries a description of ten characters or more, and
+  disable is closed by its enable. The `lint` row refuses a reason made only of characters that print nothing,
+  such as a soft hyphen or a word joiner, which the eslint-comments plugin accepts. `@ts-expect-error` carries a description of ten characters or more, and
   `@ts-ignore` and `@ts-nocheck` are refused. Nothing checks a reason on Prettier's ignore comment, so the `format`
   row refuses the comment itself.
 - An import carries `with { type: 'json' }` or no attribute, and a dynamic import takes no options. ESLint refuses
