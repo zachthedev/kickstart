@@ -1,6 +1,6 @@
 {
   "name": "kickstart",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "TODO(kickstart): say in one line what this repository is, and put its name in the name field above.",
   "private": true,
   "type": "module",
