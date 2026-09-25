@@ -21,8 +21,11 @@ env:
   MISE_ENV: ''
   MISE_AUTO_ENV: 'false'
 
+# A pull request's group is its ref, so a new push cancels the run it replaces. A push to main
+# groups by commit: GitHub keeps one pending run per group and cancels the older pending one,
+# so a ref group would leave the middle push of a burst with no gate result.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
