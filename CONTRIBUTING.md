@@ -271,7 +271,7 @@ the gate on your machine agrees with CI:
   spelling alone, a tracked workflow whose `shell:` is not `bash`, `sh` or `pwsh`, and one the gate cannot read as
   YAML.
 
-It also refuses two files that run code or read two ways, tracked alone:
+It also refuses these, tracked alone:
 
 - a tracked env file Bun loads (`.env`, `.env.local`, and the `development`, `production` and `test` pairs), at
   any depth, since Bun loads one into every start beside it. A template such as `.env.example` passes, and so does
@@ -279,7 +279,9 @@ It also refuses two files that run code or read two ways, tracked alone:
 - a key repeated within one object of a tracked `package.json`, `tsconfig.json` or `jsconfig.json`, or of a file
   its `extends` names. Bun reads the first copy where the shared `commits` job reads the last, so a repeated
   `patchedDependencies` or `paths` could pass that job while Bun applies it. A file that does not parse as plain
-  JSON is refused too.
+  JSON is refused too;
+- a `zizmor: ignore[...]` comment in a tracked file under `.github`. A waiver is an entry in `.github/zizmor.yml`.
+  The shared `workflows` job refuses one too, but its search passes over a file `.gitattributes` marks `-diff`.
 
 Each name is compared with its case folded, broader than any filesystem's comparison, so a spelling that a
 case-insensitive filesystem opens as a refused name is refused too. The first check names the work tree through
@@ -294,8 +296,7 @@ any gate row reads them. A pull request cannot edit those jobs, so the gate does
 - a `bunfig.toml` holding any key but `[install] minimumReleaseAge`;
 - `paths` or `baseUrl` in a tracked `tsconfig.json` or `jsconfig.json` or in a file its `extends` chain reads;
 - a root file named like a program the gate, its hooks or an install start (`bun`, `bunx`, `gh`, `git`, `mise` or
-  `node`), and a root entry named `'`, which actionlint would read in place of the ShellCheck stand-in;
-- a `zizmor: ignore[...]` comment in a tracked file under `.github`.
+  `node`), and a root entry named `'`, which actionlint would read in place of the ShellCheck stand-in.
 
 Review refuses what no row checks, since each such file sits in the diff and runs no code: anything under `dist/`,
 `coverage/`, `.claude/worktrees/` or a `.git`, `.sl`, `.svn`, `.hg` or `.jj` directory, a JavaScript or declaration

@@ -399,6 +399,34 @@ function workflowFindings(path: string, segments: readonly string[]): string[] {
   return found;
 }
 
+/**
+ * An inline zizmor waiver, which zizmor honors in any file it audits. Spaces
+ * and case are allowed to differ, so a spelling zizmor might read never
+ * passes.
+ */
+const ZIZMOR_IGNORE_COMMENT = /zizmor\s*:\s*ignore\s*\[/i;
+
+/**
+ * A finding when the tracked file at `path`, under `.github`, carries an
+ * inline zizmor waiver, or none.
+ *
+ * @remarks
+ * A waiver belongs in zizmor.yml, the one place a reviewer reads waivers. The
+ * shared workflows job refuses one too, but it searches with `git grep -I`,
+ * which passes over a file `.gitattributes` marks `-diff`. The gate keeps this
+ * copy until that job searches with `git grep -a`.
+ */
+function zizmorWaiverFindings(path: string, segments: readonly string[]): string[] {
+  if (segments[0] !== '.github' || !existsSync(path)) {
+    return [];
+  }
+  return ZIZMOR_IGNORE_COMMENT.test(readFileSync(path, 'utf8'))
+    ? [
+        `${quote(path)} carries a zizmor ignore comment, and zizmor waives the audit it names. A waiver is an entry in ${ZIZMOR_CONFIG}`,
+      ]
+    : [];
+}
+
 /** The paths one `git ls-files` call lists, split, or a finding when git fails. */
 async function listFiles(args: readonly string[], what: string): Promise<string[] | string> {
   const listed = await git(['ls-files', '-z', ...args]);
@@ -440,8 +468,9 @@ async function topLevelFinding(): Promise<string | undefined> {
  * Every file in the tree the gate refuses to run beside, as findings: a file
  * a program in {@link CONFIG_SEARCHES} reads, a project config outside the
  * named paths, a `node_modules` directory on disk below the root, a key
- * repeated in a tracked package.json or project config, and a tracked
- * workflow the workflows row would not read or whose shell no linter reads.
+ * repeated in a tracked package.json or project config, a tracked workflow
+ * the workflows row would not read or whose shell no linter reads, and an
+ * inline zizmor waiver in a tracked file under `.github`.
  *
  * @remarks
  * git lists nothing until it names this checkout as its work tree, and a work
@@ -505,6 +534,7 @@ export async function trackedFindings(): Promise<string[]> {
         found.push(...repeatedKeyFindings(path, path, new Set()));
       }
       found.push(...workflowFindings(path, segments));
+      found.push(...zizmorWaiverFindings(path, segments));
     }
   }
   if (nested.size > 0) {

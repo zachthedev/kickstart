@@ -980,6 +980,64 @@ test('a shell outside the workflows directory, or in an untracked workflow, yiel
   expect(await trackedFindings()).toEqual([]);
 });
 
+/* ///// Inline zizmor waivers ///// */
+
+interface WaiverCase {
+  readonly label: string;
+  readonly path: string;
+  readonly text: string;
+  readonly tracked: boolean;
+  readonly refused: boolean;
+}
+
+const WAIVERS: readonly WaiverCase[] = [
+  {
+    label: 'a waiver in a tracked workflow',
+    path: '.github/workflows/ci.yml',
+    text: 'jobs: {} # zizmor: ignore[unpinned-uses]\n',
+    tracked: true,
+    refused: true,
+  },
+  {
+    label: 'a waiver in the tracked dependabot.yml',
+    path: '.github/dependabot.yml',
+    text: 'version: 2 # zizmor: ignore[dependabot-cooldown]\n',
+    tracked: true,
+    refused: true,
+  },
+  {
+    label: 'a waiver in another case and spacing in a composite action',
+    path: '.github/actions/probe/action.yml',
+    text: 'runs: {} # ZIZMOR : IGNORE [template-injection]\n',
+    tracked: true,
+    refused: true,
+  },
+  {
+    label: 'the words outside .github',
+    path: 'docs/notes.md',
+    text: 'A `zizmor: ignore[x]` comment is refused.\n',
+    tracked: true,
+    refused: false,
+  },
+  {
+    label: 'a waiver in an untracked workflow',
+    path: '.github/workflows/ci.yml',
+    text: 'jobs: {} # zizmor: ignore[unpinned-uses]\n',
+    tracked: false,
+    refused: false,
+  },
+];
+
+test.each([...WAIVERS])('$label', async ({ path, text, tracked, refused }: WaiverCase) => {
+  mkdirSync(dirname(join(cwd, path)), { recursive: true });
+  writeFileSync(join(cwd, path), text);
+  answerGit(tracked ? [path] : [], tracked ? [] : [path]);
+
+  expect(await trackedFindings()).toEqual(
+    refused ? [carrying(`${JSON.stringify(path)} carries a zizmor ignore comment`)] : [],
+  );
+});
+
 /* ///// Personal files ///// */
 
 test.each(['lefthook-local.yml', '.lefthook-local'])(
