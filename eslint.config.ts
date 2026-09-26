@@ -44,7 +44,10 @@ export default defineConfig(
   // Bun runs any file as code under an import attribute naming a loader, such
   // as `with { type: 'js' }` on a .txt import, which no row reads as code. An
   // import carries `type: 'json'` or no attribute, and a dynamic import takes
-  // no options.
+  // no options. bun test counts a failing or failingIf case as a pass and names
+  // it nowhere in its summary, so an inverted test passes every row that counts
+  // tests. The selector reads the property on any chain, such as
+  // `test.concurrent.failing`.
   {
     rules: {
       'no-restricted-syntax': [
@@ -57,6 +60,10 @@ export default defineConfig(
         {
           selector: 'ImportExpression[options]',
           message: 'Bun runs a file as code under a loader attribute. Import JSON with a static import.',
+        },
+        {
+          selector: 'MemberExpression[property.name=/^failing(If)?$/]',
+          message: 'bun test counts a failing case as a pass. Fix the code or the test instead.',
         },
       ],
     },

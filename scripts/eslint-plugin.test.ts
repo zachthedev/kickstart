@@ -182,6 +182,46 @@ test.each([
   expect(await problems(text)).toEqual({ found: [], messages: [] });
 });
 
+/** The repository's own config, loaded once for the cases that lint text under it. */
+const repository = new ESLint({ cwd: ROOT, overrideConfigFile: join(ROOT, 'eslint.config.ts') });
+
+/** Every problem the repository's config reports over `text` as a test file, as its line and rule. */
+async function repositoryProblems(text: string): Promise<string[]> {
+  const [result] = await repository.lintText(text, { filePath: join(ROOT, 'tests', 'example.test.ts') });
+  return (result?.messages ?? [{ line: 0, ruleId: 'no result' }]).map(
+    (message) => `${String(message.line)} ${message.ruleId ?? 'no rule'}`,
+  );
+}
+
+test.each([
+  ['test.failing', "import { test } from 'bun:test';\n\ntest.failing('inverted', () => undefined);\n", []],
+  ['it.failing', "import { it } from 'bun:test';\n\nit.failing('inverted', () => undefined);\n", []],
+  ['test.failingIf', "import { test } from 'bun:test';\n\ntest.failingIf(true)('inverted', () => undefined);\n", []],
+  [
+    'a failing case down a chain',
+    "import { test } from 'bun:test';\n\ntest.concurrent.failing('inverted', () => undefined);\n",
+    [],
+  ],
+  [
+    'describe.failing, though bun-types declares none',
+    "import { describe } from 'bun:test';\n\ndescribe.failing('inverted', () => undefined);\n",
+    ['3 @typescript-eslint/no-unsafe-call'],
+  ],
+])(
+  'eslint.config.ts refuses %s, since bun test counts a failing case as a pass',
+  async (_label: string, text: string, beside: readonly string[]) => {
+    expect((await repositoryProblems(text)).sort()).toEqual(['3 no-restricted-syntax', ...beside].sort());
+  },
+);
+
+test('eslint.config.ts leaves a plain test and a skipped one to the test row', async () => {
+  expect(
+    await repositoryProblems(
+      "import { test } from 'bun:test';\n\ntest('plain', () => undefined);\ntest.skip('skipped', () => undefined);\n",
+    ),
+  ).toEqual([]);
+});
+
 test.each(['src/example.ts', 'scripts/check.ts', 'tests/example.test.ts', 'eslint.config.ts', 'commitlint.config.js'])(
   'eslint.config.ts turns the gate rule on for %s, and refuses every directive comment but a disable or an enable',
   async (path: string) => {
