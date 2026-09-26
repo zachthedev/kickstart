@@ -248,13 +248,21 @@ const SUMMARY_COUNT = /^\s*(\d+) (pass|fail|skip|todo|filtered out)$/;
  * comes last, and the block's counts must add up to the tests it ran. bun
  * test exits 0 over a file that holds no test and over one whose every test
  * is skipped, and a name pattern leaves tests out of the count and prints how
- * many it filtered out.
+ * many it filtered out. A skip or a todo counts against `allowed`, the skips
+ * the gate declares for the suite on this platform, and a count on either side
+ * of it fails: one more is a skip nobody declared, and one fewer leaves room
+ * for an undeclared skip to pass unseen.
  *
+ * @param label - The command, for the row's messages
+ * @param finished - The bun test run
+ * @param allowed - How many of the suite's tests skip on this platform by
+ * design, as the gate declares
  * @throws When it ran no test, when the counts above its `Ran` line do not
  * add up to it, when a test failed, when every test it counted was skipped or
- * left to do, or when a name pattern filtered any out
+ * left to do, when a name pattern filtered any out, or when the skips and the
+ * todos differ from `allowed`
  */
-export function testCount(label: string, finished: Finished): string {
+export function testCount(label: string, finished: Finished, allowed: number): string {
   const lines = plain(finished.stderr).split('\n');
   const at = lines.findLastIndex((line) => RAN.test(line));
   const ran = RAN.exec(lines[at] ?? '');
@@ -285,6 +293,11 @@ export function testCount(label: string, finished: Finished): string {
   if (count('filtered out') > 0) {
     throw new Error(
       `${label} left ${String(count('filtered out'))} tests out through a name pattern, so its count is not the suite`,
+    );
+  }
+  if (skipped !== allowed) {
+    throw new Error(
+      `${label} skipped ${String(skipped)} of its ${String(tests)} tests, and the gate declares ${String(allowed)} on this platform, so ${skipped > allowed ? 'a test skipped that no declaration names' : 'the declaration names a skip that no longer happens'}. Change the test, or the declared count in scripts/check.ts`,
     );
   }
   const skip = skipped > 0 ? `, ${String(skipped)} skipped` : '';

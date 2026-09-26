@@ -206,6 +206,18 @@ function batches(paths: readonly string[]): string[][] {
  */
 const TEST_ENV: Readonly<Record<string, string>> = { CI: 'true' };
 
+/**
+ * How many of the gate's own tests skip on this platform by design: the cases
+ * for a behavior only Windows has skip on Linux and macOS, and the cases for
+ * one Windows lacks skip there. The scripts:test row fails on any other count,
+ * so on Windows it fails where the temporary directory's volume keeps no 8.3
+ * short names, since the short-name case skips there too.
+ */
+const SCRIPTS_TEST_SKIPS = process.platform === 'win32' ? 2 : 6;
+
+/** How many of the repository's own tests skip on this platform by design. The test row fails on any other count. */
+const TEST_SKIPS = 0;
+
 /* ///// scripts:test ///// */
 
 // The gate's own tests. Each case starts a stand-in in place of every program
@@ -217,7 +229,7 @@ async function scriptsTest(): Promise<string> {
   if (finished.exitCode !== 0) {
     throw new Error(`bun test ./scripts/ ${describe(finished)}`);
   }
-  return testCount('bun test ./scripts/', finished);
+  return testCount('bun test ./scripts/', finished, SCRIPTS_TEST_SKIPS);
 }
 
 /* ///// tools ///// */
@@ -584,7 +596,7 @@ async function test(): Promise<string> {
   if (finished.exitCode !== 0) {
     throw new Error(`bun test exited ${String(finished.exitCode)}. The report is above`);
   }
-  return testCount('bun test', finished);
+  return testCount('bun test', finished, TEST_SKIPS);
 }
 
 /* ///// The rows ///// */
@@ -636,14 +648,14 @@ const rows: readonly Row[] = [
   {
     name: 'scripts:test',
     checks:
-      "bun test over the gate's own scripts/*.test.ts, every program they start a stand-in, counting the tests and failing when every one was skipped",
+      "bun test over the gate's own scripts/*.test.ts, every program they start a stand-in, counting the tests and failing on a skip count other than the one declared for this platform",
     check: scriptsTest,
     runsCode: true,
   },
   {
     name: 'test',
     checks:
-      'bun test with coverage over every test outside the root scripts directory, counting them as scripts:test does',
+      'bun test with coverage over every test outside the root scripts directory, counting them as scripts:test does against its own declared skips',
     check: test,
     slow: true,
     runsCode: true,

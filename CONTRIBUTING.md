@@ -259,10 +259,12 @@ same files. It refuses every report there from a rule that reads comments: `gate
 `no-use` included, fails the row. The second pass reports each rule a waiver turns off, and the row passes those.
 
 The `lint` row runs `eslint.config.ts`, the `scripts:test` row runs the gate's own tests, `bun test ./scripts/`,
-and the `test` row runs every other test with coverage. They are the last three rows, since each runs repository
+and the `test` row runs every other test with coverage. They run after every other row, since each runs repository
 code that can write any file a row reads, and the checks before the first row run again after each. The two test
 rows each say how many ran, and fail when none ran, when every one it counted was skipped, and when a name pattern
-left any out. The count comes from bun test's own summary on stderr: the last `Ran` line and the counts directly
+left any out. Each also fails when the tests it skipped, todos included, differ from the count `scripts/check.ts`
+declares for that row on the platform: a skip nobody declared fails, and so does a declared one that no longer
+happens. The count comes from bun test's own summary on stderr: the last `Ran` line and the counts directly
 above it, which must add up to it. Both run with `CI=true`, so a `test.only` fails the row rather than running
 alone and leaving its file's other tests out of the count.
 
@@ -524,6 +526,9 @@ A local run that fails or disagrees with CI:
   `safe.directory` entry, by design.
 - A row that fails because a process its tool started still holds the tool's output leaves that process running,
   since nothing the gate can reach ends a process whose parent is gone. Find it and end it.
+- On Windows, a `scripts:test` row that skips one test more than it declares can come from the temporary
+  directory's volume. The case for a program reached through an 8.3 short name skips where the volume keeps no
+  short names. Point `TEMP` at a volume that keeps them.
 
 ## What never happens
 

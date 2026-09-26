@@ -82,6 +82,8 @@ interface CountCase {
   readonly summary: string;
   /** What the run printed on stdout, where a test's console output goes. */
   readonly stdout?: string;
+  /** The skips the gate declares for the run, none when absent. */
+  readonly allowed?: number;
   /** The row's line, or undefined when the count must throw. */
   readonly line?: string;
   /** A fragment the throw carries. */
@@ -101,13 +103,45 @@ const COUNTS: readonly CountCase[] = [
     line: '1 test across 1 file',
   },
   {
-    label: 'some skipped, as on a platform a case does not run on',
+    label: 'as many skipped as the gate declares, as on a platform a case does not run on',
     summary: ' 5 pass\n 2 skip\n 0 fail\nRan 7 tests across 2 files. [80.00ms]\n',
+    allowed: 2,
     line: '7 tests across 2 files, 2 skipped',
+  },
+  {
+    label: 'a skip and a todo, together as many as the gate declares',
+    summary: ' 5 pass\n 1 skip\n 1 todo\n 0 fail\nRan 7 tests across 2 files. [80.00ms]\n',
+    allowed: 2,
+    line: '7 tests across 2 files, 2 skipped',
+  },
+  {
+    label: 'one more skipped than the gate declares',
+    summary: ' 4 pass\n 3 skip\n 0 fail\nRan 7 tests across 2 files. [80.00ms]\n',
+    allowed: 2,
+    refused:
+      'bun test skipped 3 of its 7 tests, and the gate declares 2 on this platform, so a test skipped that no declaration names',
+  },
+  {
+    label: 'a skip where the gate declares none',
+    summary: ' 6 pass\n 1 skip\n 0 fail\nRan 7 tests across 2 files. [80.00ms]\n',
+    refused: 'bun test skipped 1 of its 7 tests, and the gate declares 0 on this platform',
+  },
+  {
+    label: 'a todo where the gate declares none',
+    summary: ' 6 pass\n 1 todo\n 0 fail\nRan 7 tests across 2 files. [80.00ms]\n',
+    refused: 'bun test skipped 1 of its 7 tests, and the gate declares 0 on this platform',
+  },
+  {
+    label: 'one fewer skipped than the gate declares',
+    summary: ' 6 pass\n 1 skip\n 0 fail\nRan 7 tests across 2 files. [80.00ms]\n',
+    allowed: 2,
+    refused:
+      'bun test skipped 1 of its 7 tests, and the gate declares 2 on this platform, so the declaration names a skip that no longer happens',
   },
   {
     label: 'Windows line endings',
     summary: ' 3 pass\r\n 1 skip\r\n 0 fail\r\nRan 4 tests across 1 file. [8.00ms]\r\n',
+    allowed: 1,
     line: '4 tests across 1 file, 1 skipped',
   },
   {
@@ -133,6 +167,7 @@ const COUNTS: readonly CountCase[] = [
   },
   {
     label: 'a colored summary, as FORCE_COLOR gives',
+    allowed: 1,
     summary: `${colored(' 1 pass')}\n ${colored('1 skip')}\n${colored(' 0 fail')}\nRan 2 tests across 1 file. ${ESC}[2m[${ESC}[1m5.00ms${ESC}[0m${ESC}[2m]${ESC}[0m\n`,
     line: '2 tests across 1 file, 1 skipped',
   },
@@ -166,11 +201,11 @@ const COUNTS: readonly CountCase[] = [
   },
 ];
 
-test.each([...COUNTS])('$label', ({ summary, stdout, line, refused }: CountCase) => {
+test.each([...COUNTS])('$label', ({ summary, stdout, allowed, line, refused }: CountCase) => {
   if (line !== undefined) {
-    expect(testCount('bun test', ended(summary, stdout))).toBe(line);
+    expect(testCount('bun test', ended(summary, stdout), allowed ?? 0)).toBe(line);
   } else {
-    expect(() => testCount('bun test', ended(summary, stdout))).toThrow(refused ?? '');
+    expect(() => testCount('bun test', ended(summary, stdout), allowed ?? 0)).toThrow(refused ?? '');
   }
 });
 
