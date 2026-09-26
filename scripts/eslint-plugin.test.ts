@@ -183,11 +183,19 @@ test.each([
 });
 
 test.each(['src/example.ts', 'scripts/check.ts', 'tests/example.test.ts', 'eslint.config.ts', 'commitlint.config.js'])(
-  'eslint.config.ts turns the gate rule on for %s',
+  'eslint.config.ts turns the gate rule on for %s, and refuses every directive comment but a disable or an enable',
   async (path: string) => {
     const repository = new ESLint({ cwd: ROOT, overrideConfigFile: join(ROOT, 'eslint.config.ts') });
     const config: unknown = await repository.calculateConfigForFile(join(ROOT, path));
 
-    expect(config).toMatchObject({ rules: { 'gate/visible-reason': [2] } });
+    expect(config).toMatchObject({
+      rules: {
+        'gate/visible-reason': [2],
+        '@eslint-community/eslint-comments/no-use': [
+          2,
+          { allow: ['eslint-disable', 'eslint-enable', 'eslint-disable-line', 'eslint-disable-next-line'] },
+        ],
+      },
+    });
   },
 );

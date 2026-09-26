@@ -1,15 +1,26 @@
-import { expect, test } from 'bun:test';
+import { expect, setDefaultTimeout, test } from 'bun:test';
+import { join } from 'node:path';
+import comments from '@eslint-community/eslint-plugin-eslint-comments/configs';
+import { ESLint } from 'eslint';
+import { defineConfig } from 'eslint/config';
+import tseslint from 'typescript-eslint';
+import { gatePlugin } from './eslint-plugin';
 import {
   actionlintFinished,
   comparable,
   compilerFinding,
   ignoreCommentFindings,
+  lintedAsWritten,
+  lintedWithoutComments,
   taploFound,
   testCount,
   unreadSourceFinding,
   zizmorCompleted,
 } from './rows';
 import { type Finished, plain, printable, quote } from './run';
+
+// Loading typescript-eslint takes seconds on a cold cache.
+setDefaultTimeout(30_000);
 
 /** An asymmetric matcher for a finding carrying `fragment`. */
 function carrying(fragment: string): string {
@@ -242,6 +253,229 @@ test.each([
   ['a pin naming no version', 'Version 7.0.2\n', 'npm:typescript@latest', 'which names no version'],
 ])('%s is a finding', (_label: string, printed: string, spec: string, fragment: string) => {
   expect(compilerFinding(printed, spec)).toEqual(carrying(fragment));
+});
+
+/* ///// What the lint row concludes from ESLint ///// */
+
+// ESLint lints each case in this process with the comment rules the
+// repository sets, once reading every comment and once with none read as a
+// directive or configuration, as the row's two passes do. The json each pass
+// prints is what lintedAsWritten and lintedWithoutComments read.
+
+/** The repository root, where the probe file each case is linted as would sit. */
+const ROOT = join(import.meta.dir, '..');
+
+/** The file each case's text is linted as. */
+const PROBE = join(ROOT, 'probe.ts');
+
+// Built from its code point, so no invisible character is written into this file.
+const WORD_JOINER = String.fromCodePoint(0x2060);
+
+/**
+ * The rules eslint.config.ts sets on a comment, and a rule for a waiver to
+ * turn off, with no type information, since each case is text that no
+ * project holds.
+ */
+const LINT_CONFIG = defineConfig(comments.recommended, {
+  files: ['**/*.ts'],
+  languageOptions: { parser: tseslint.parser },
+  plugins: { gate: gatePlugin, '@typescript-eslint': tseslint.plugin },
+  rules: {
+    'gate/visible-reason': 'error',
+    '@eslint-community/eslint-comments/require-description': 'error',
+    '@eslint-community/eslint-comments/no-use': [
+      'error',
+      { allow: ['eslint-disable', 'eslint-enable', 'eslint-disable-line', 'eslint-disable-next-line'] },
+    ],
+    '@typescript-eslint/ban-ts-comment': ['error', { minimumDescriptionLength: 10 }],
+    'no-debugger': 'error',
+  },
+});
+
+const asWritten = new ESLint({ cwd: ROOT, overrideConfigFile: true, overrideConfig: LINT_CONFIG });
+const noInline = new ESLint({
+  cwd: ROOT,
+  overrideConfigFile: true,
+  overrideConfig: LINT_CONFIG,
+  allowInlineConfig: false,
+});
+
+/** ESLint's json over `text` from `linter`, exiting 1 when it reports a problem, as its command line does. */
+async function linted(linter: ESLint, text: string): Promise<Finished> {
+  const results = await linter.lintText(text, { filePath: PROBE });
+  const formatter = await linter.loadFormatter('json');
+  return {
+    exitCode: results.some((result) => result.messages.length > 0) ? 1 : 0,
+    stdout: await formatter.format(results),
+    stderr: '',
+    heldOpen: false,
+  };
+}
+
+/** What the lint row ends with over `text`: `passed <line>`, or the message it throws. */
+async function lintRow(text: string): Promise<string> {
+  const [first, second] = [await linted(asWritten, text), await linted(noInline, text)];
+  try {
+    return `passed ${lintedWithoutComments(second, lintedAsWritten(first))}`;
+  } catch (error: unknown) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
+/** The first pass's refusal of a gate/visible-reason report a directive turned off, at `line` and `column`. */
+const turnedOff = (line: number, column: number): string =>
+  `${quote(PROBE)}:${String(line)}:${String(column)}  a directive turned off gate/visible-reason, which no directive may do. Take the rule out of the directive and give each waiver a reason in words`;
+
+/** The second pass's refusal of a report from `rule`, at `line` and `column`, saying `message`. */
+const unwaived = (line: number, column: number, rule: string, message: string): string =>
+  `${quote(PROBE)}:${String(line)}:${String(column)}  ${rule} reports this with every directive and configuration comment ignored, and no comment may turn that rule off: ${message}`;
+
+/** The first pass's refusal of the one directive comment at `line` that no-use allows none of. */
+const directiveRefused = (line: number): string =>
+  `eslint exited 1 over 1 file:\n${quote(PROBE)}:${String(line)}:0  error  Unexpected ESLint directive comment.  @eslint-community/eslint-comments/no-use`;
+
+const NO_USE = '@eslint-community/eslint-comments/no-use';
+
+test.each([
+  [
+    'a disable-line naming the gate rule beside the one it waives, with an invisible reason',
+    `debugger; // eslint-disable-line no-debugger, gate/visible-reason -- ${WORD_JOINER}\n`,
+    turnedOff(1, 11),
+  ],
+  [
+    'a block disable naming the gate rule, closed by an enable with a reason in words, and a waiver between them',
+    `/* eslint-disable gate/visible-reason -- ${WORD_JOINER} */\n// eslint-disable-next-line no-debugger -- ${WORD_JOINER}\ndebugger;\n/* eslint-enable gate/visible-reason -- restore the rule */\n`,
+    [turnedOff(1, 1), turnedOff(2, 1)].join('\n'),
+  ],
+  [
+    'a configuration comment turning the gate rule off for its file',
+    `/* eslint gate/visible-reason: "off" -- the rule stays off in this file */\n// eslint-disable-next-line no-debugger -- ${WORD_JOINER}\ndebugger;\n`,
+    directiveRefused(1),
+  ],
+  [
+    'a configuration comment turning off a rule that reads no comments',
+    '/* eslint no-debugger: "off" -- this file steps through the gate by hand */\ndebugger;\n',
+    directiveRefused(1),
+  ],
+  [
+    'a global declared in a comment',
+    '/* global probe -- a global the runtime declares */\nexport const value: unknown = probe;\n',
+    directiveRefused(1),
+  ],
+  [
+    'globals declared in a comment',
+    '/* globals probe -- a global the runtime declares */\nexport const value: unknown = probe;\n',
+    directiveRefused(1),
+  ],
+  [
+    'an exported comment',
+    '/* exported value -- another file reads it */\nexport const value = 1;\n',
+    directiveRefused(1),
+  ],
+  [
+    'an eslint-env comment, which ESLint refuses beside no-use',
+    '/* eslint-env node -- the file runs under node */\nexport const value = 1;\n',
+    `${directiveRefused(1)}\n${quote(PROBE)}:1:1  error  /* eslint-env */ comments are no longer supported.  `,
+  ],
+  [
+    'a configuration comment turning no-use off before one setting a rule',
+    '/* eslint @eslint-community/eslint-comments/no-use: "off" -- the rule stays off */\n/* eslint no-debugger: "off" -- the file steps through by hand */\ndebugger;\n',
+    [
+      unwaived(1, 0, NO_USE, 'Unexpected ESLint directive comment.'),
+      unwaived(2, 0, NO_USE, 'Unexpected ESLint directive comment.'),
+    ].join('\n'),
+  ],
+  [
+    'a block disable of no-use around a configuration comment',
+    '/* eslint-disable @eslint-community/eslint-comments/no-use -- a block of settings */\n/* eslint no-debugger: "off" -- the file steps through by hand */\n/* eslint-enable @eslint-community/eslint-comments/no-use -- the block ends */\ndebugger;\n',
+    unwaived(2, 0, NO_USE, 'Unexpected ESLint directive comment.'),
+  ],
+])('%s is refused, naming each report', async (_label: string, text: string, refusal: string) => {
+  expect(await lintRow(text)).toBe(refusal);
+});
+
+test.each([
+  ['a next-line directive', '// eslint-disable-next-line no-debugger -- stepped through by hand\ndebugger;\n', 2],
+  ['a disable-line directive', 'debugger; // eslint-disable-line no-debugger -- stepped through by hand\n', 1],
+  [
+    'a block pair',
+    '/* eslint-disable no-debugger -- the block steps through by hand */\ndebugger;\n/* eslint-enable no-debugger -- the block ends here */\n',
+    2,
+  ],
+  [
+    'a block next-line directive',
+    '/* eslint-disable-next-line no-debugger -- stepped through by hand */\ndebugger;\n',
+    2,
+  ],
+  ['a block disable-line directive', 'debugger; /* eslint-disable-line no-debugger -- stepped through by hand */\n', 1],
+  [
+    'a block pair whose reason starts on the next line',
+    '/* eslint-disable no-debugger --\n   the reason on its own line */\ndebugger;\n/* eslint-enable no-debugger -- the pair */\n',
+    3,
+  ],
+])(
+  '%s with a reason in words passes both passes, though the second reports the rule it waives',
+  async (_label: string, text: string, line: number) => {
+    const second: unknown = JSON.parse((await linted(noInline, text)).stdout);
+
+    expect(second).toMatchObject([{ messages: [{ ruleId: 'no-debugger', line }] }]);
+    expect(await lintRow(text)).toBe('passed 1 file');
+  },
+);
+
+test('a @ts-expect-error with a description in words passes both passes', async () => {
+  expect(
+    await lintRow(
+      "// @ts-expect-error the fixture assigns a string to a number\nexport const count: number = 'text';\n",
+    ),
+  ).toBe('passed 1 file');
+});
+
+/** One pass's printed json: `results` as ESLint's json formatter writes them. */
+function printed(results: unknown, exitCode = 0, stderr = ''): Finished {
+  return { exitCode, stdout: JSON.stringify(results), stderr, heldOpen: false };
+}
+
+/** One clean file result for `path`. */
+const clean = (path: string): unknown => ({ filePath: path, messages: [], suppressedMessages: [] });
+
+test.each([
+  [
+    'json whose results list no suppressed reports',
+    printed([{ filePath: PROBE, messages: [] }]),
+    'eslint printed json that is not a list of file results',
+  ],
+  [
+    'no json at all',
+    { exitCode: 2, stdout: '', stderr: 'config error', heldOpen: false },
+    'eslint exited 2 saying: config error',
+  ],
+  ['no file linted', printed([]), 'eslint linted no file, so it checked nothing'],
+])('a first pass printing %s is refused', (_label: string, first: Finished, refusal: string) => {
+  expect(() => lintedAsWritten(first)).toThrow(refusal);
+});
+
+test.each([
+  [
+    'lints no file',
+    printed([]),
+    'eslint --no-inline-config linted 0 files and the first pass 1 file, not the same ones',
+  ],
+  [
+    'lints another file',
+    printed([clean(join(ROOT, 'other.ts'))], 1),
+    'eslint --no-inline-config linted 1 file and the first pass 1 file, not the same ones',
+  ],
+  ['exits 2', printed([clean(PROBE)], 2, 'crashed'), 'eslint --no-inline-config exited 2 saying:'],
+  [
+    'prints no json',
+    { exitCode: 1, stdout: '', stderr: 'crashed', heldOpen: false },
+    'eslint --no-inline-config exited 1 saying: crashed',
+  ],
+])('a second pass that %s is refused', (_label: string, second: Finished, refusal: string) => {
+  expect(() => lintedWithoutComments(second, [{ filePath: PROBE, messages: [], suppressedMessages: [] }])).toThrow(
+    refusal,
+  );
 });
 
 /* ///// Prettier ignore comments ///// */

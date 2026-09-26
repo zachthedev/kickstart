@@ -23,12 +23,20 @@ export default defineConfig(
   // reason. The gate's visible-reason rule refuses a reason there or on a
   // TypeScript waiver comment that holds no letter or digit once
   // default-ignorable code points are removed. ESLint reports a directive
-  // that silences nothing, and the lint row allows no warning.
+  // that silences nothing, and the lint row allows no warning. A comment that
+  // configures ESLint, such as `/* eslint no-debugger: "off" */`, holds a rule
+  // off for its whole file with no enable to close it, so no-use refuses every
+  // directive but the disable and enable forms: a rule's setting and a global
+  // live in this file alone.
   comments.recommended,
   {
     plugins: { gate: gatePlugin },
     rules: {
       '@eslint-community/eslint-comments/require-description': 'error',
+      '@eslint-community/eslint-comments/no-use': [
+        'error',
+        { allow: ['eslint-disable', 'eslint-enable', 'eslint-disable-line', 'eslint-disable-next-line'] },
+      ],
       'gate/visible-reason': 'error',
     },
   },

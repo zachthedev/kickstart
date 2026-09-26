@@ -143,6 +143,11 @@ apply. -->
   The eslint-comments plugin and ban-ts-comment accept a reason of a soft hyphen, a word joiner or a Braille blank
   alone, and the rule refuses each. Nothing checks a reason on Prettier's ignore comment, so the `format` row
   refuses the comment itself.
+- A comment never configures ESLint. `eslint.config.ts` holds every rule's setting and every global, and
+  eslint-comments' `no-use` refuses each directive but `eslint-disable`, `eslint-enable`, `eslint-disable-line` and
+  `eslint-disable-next-line`: a configuration comment such as `/* eslint no-debugger: "off" */`, `global`,
+  `globals`, `exported` and `eslint-env`. A configuration comment holds a rule off for its whole file with nothing
+  to close it, where a waiver is a disable closed by its enable or a directive for one line.
 - An import carries `with { type: 'json' }` or no attribute, and a dynamic import takes no options. ESLint refuses
   any other attribute, since Bun runs a file of any extension as code under one naming a loader, and no row reads
   a `.txt` as code.
@@ -244,6 +249,14 @@ Any other ending leaves stdout empty, which actionlint reports as a failed run. 
 every run: one script whose SC2086 must come back from ShellCheck, and one whose `# shellcheck disable=SC2086` must
 come back refused. actionlint runs ShellCheck for a `bash` or `sh` step alone, so the gate refuses a `shell:` value
 outside `bash`, `sh` and `pwsh`, on a step or under `defaults.run`.
+
+The `lint` row runs ESLint twice over the tree. The first pass reads every comment and allows no warning. It also
+refuses a report of `gate/visible-reason` that a directive turned off: a directive naming the rule hides the rule's
+report on that directive, and ESLint lists such a report apart from the problems and counts it in no exit code. The
+second pass runs with `--no-inline-config`, which reads no comment as a directive or as configuration, over the
+same files. It refuses every report there from a rule that reads comments: `gate/visible-reason`,
+`@typescript-eslint/ban-ts-comment` and every eslint-comments rule. So a comment that turns one of those rules off,
+`no-use` included, fails the row. The second pass reports each rule a waiver turns off, and the row passes those.
 
 The `lint` row runs `eslint.config.ts`, the `scripts:test` row runs the gate's own tests, `bun test ./scripts/`,
 and the `test` row runs every other test with coverage. They are the last three rows, since each runs repository

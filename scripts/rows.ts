@@ -69,6 +69,165 @@ export function compilerFinding(printed: string, spec: string): string | undefin
   return undefined;
 }
 
+/* ///// What ESLint reports ///// */
+
+/** One message ESLint's json formatter reports against a file. */
+export interface LintMessage {
+  readonly ruleId?: string | null;
+  readonly severity?: number;
+  readonly message?: string;
+  readonly line?: number;
+  readonly column?: number;
+}
+
+/** One file ESLint's json formatter reports on. */
+export interface LintResult {
+  readonly filePath: string;
+  readonly messages: readonly LintMessage[];
+  /** The reports a directive turned off, which ESLint lists whatever the directive says. */
+  readonly suppressedMessages: readonly LintMessage[];
+}
+
+/** Whether `value`, parsed from ESLint's json output, is one file's result. */
+function isLintResult(value: unknown): value is LintResult {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { filePath?: unknown }).filePath === 'string' &&
+    Array.isArray((value as { messages?: unknown }).messages) &&
+    Array.isArray((value as { suppressedMessages?: unknown }).suppressedMessages)
+  );
+}
+
+/** The gate's rule that refuses a waiver whose reason holds no letter or digit. */
+const VISIBLE_REASON = 'gate/visible-reason';
+
+/** The rule that holds a TypeScript waiver comment to a description. */
+const BAN_TS_COMMENT = '@typescript-eslint/ban-ts-comment';
+
+/** The prefix of every rule of the plugin that checks ESLint's own directive comments. */
+const ESLINT_COMMENTS = '@eslint-community/eslint-comments/';
+
+/** Whether `ruleId` names a rule that reads comments: the visible-reason rule, ban-ts-comment, or an eslint-comments rule. */
+function isCommentRule(ruleId: string | null | undefined): boolean {
+  return ruleId === VISIBLE_REASON || ruleId === BAN_TS_COMMENT || (ruleId ?? '').startsWith(ESLINT_COMMENTS);
+}
+
+/** Where `message` sits in the file `result` names, as a finding opens. */
+function position(result: LintResult, message: LintMessage): string {
+  return `${quote(result.filePath)}:${String(message.line ?? 0)}:${String(message.column ?? 0)}`;
+}
+
+/**
+ * Every file result in the json one ESLint pass, `finished`, printed.
+ *
+ * @throws When the pass printed no json, which means ESLint stopped before it
+ * linted anything, or json that is not a list of file results
+ */
+function lintResults(label: string, finished: Finished): LintResult[] {
+  let results: unknown;
+  try {
+    results = JSON.parse(plain(finished.stdout));
+  } catch {
+    throw new Error(`${label} ${describe(finished)}`);
+  }
+  if (!Array.isArray(results) || !results.every((result) => isLintResult(result))) {
+    throw new Error(`${label} printed json that is not a list of file results: ${describe(finished)}`);
+  }
+  return results;
+}
+
+/**
+ * The file results of the lint row's first pass, `finished`: ESLint over the
+ * tree with the repository's config, every comment read and no warning
+ * allowed.
+ *
+ * @remarks
+ * ESLint applies a directive to the reports at its own position, so a
+ * directive naming {@link VISIBLE_REASON} hides the rule's report on that
+ * directive, and a block disable naming it hides every report up to its
+ * enable. ESLint lists each report a directive turned off under
+ * `suppressedMessages`, which no directive empties and no exit code counts,
+ * so each such report of that rule is refused here.
+ *
+ * @throws When ESLint printed no file results, exited other than 0, naming
+ * each problem, linted no file, or turned off a report of
+ * {@link VISIBLE_REASON}
+ */
+export function lintedAsWritten(finished: Finished): LintResult[] {
+  const results = lintResults('eslint', finished);
+  const problems = results.flatMap((result) =>
+    result.messages.map(
+      (message) =>
+        `${position(result, message)}  ${message.severity === 2 ? 'error' : 'warning'}  ${message.message ?? ''}  ${message.ruleId ?? ''}`,
+    ),
+  );
+  const suppressed = results.flatMap((result) =>
+    result.suppressedMessages
+      .filter((message) => message.ruleId === VISIBLE_REASON)
+      .map(
+        (message) =>
+          `${position(result, message)}  a directive turned off ${VISIBLE_REASON}, which no directive may do. Take the rule out of the directive and give each waiver a reason in words`,
+      ),
+  );
+  if (finished.exitCode !== 0) {
+    throw new Error(
+      `eslint exited ${String(finished.exitCode)} over ${files(results.length)}:\n${[...problems, ...suppressed, finished.stderr.trim()].filter((line) => line.length > 0).join('\n')}`,
+    );
+  }
+  if (results.length === 0) {
+    throw new Error('eslint linted no file, so it checked nothing');
+  }
+  if (suppressed.length > 0) {
+    throw new Error(suppressed.join('\n'));
+  }
+  return results;
+}
+
+/**
+ * The lint row's line from its second pass, `finished`: ESLint over the tree
+ * with `--no-inline-config`, against `first`, the first pass's file results.
+ *
+ * @remarks
+ * A configuration comment setting a rule to off turns it off for its whole
+ * file, so the rule reports nothing there and nothing lands in
+ * `suppressedMessages` either. Under `--no-inline-config` ESLint reads no
+ * comment as a directive or as configuration, so every rule that reads
+ * comments runs over every file, and each of its reports is one a comment hid
+ * from the first pass. That pass exits 1 wherever a directive waives another
+ * rule, so its exit code decides nothing but a crash.
+ *
+ * @throws When the pass printed no file results, exited other than 0 or 1,
+ * linted other files than the first pass, or reports a rule that reads
+ * comments
+ */
+export function lintedWithoutComments(finished: Finished, first: readonly LintResult[]): string {
+  const label = 'eslint --no-inline-config';
+  const results = lintResults(label, finished);
+  if (finished.exitCode !== 0 && finished.exitCode !== 1) {
+    throw new Error(`${label} ${describe(finished)}`);
+  }
+  const read = (all: readonly LintResult[]): string[] => all.map((result) => result.filePath).sort();
+  const [these, those] = [read(results), read(first)];
+  if (these.length !== those.length || these.some((path, index) => path !== those[index])) {
+    throw new Error(
+      `${label} linted ${files(these.length)} and the first pass ${files(those.length)}, not the same ones, so the two passes read different trees`,
+    );
+  }
+  const unwaived = results.flatMap((result) =>
+    result.messages
+      .filter((message) => isCommentRule(message.ruleId))
+      .map(
+        (message) =>
+          `${position(result, message)}  ${message.ruleId ?? ''} reports this with every directive and configuration comment ignored, and no comment may turn that rule off: ${message.message ?? ''}`,
+      ),
+  );
+  if (unwaived.length > 0) {
+    throw new Error(unwaived.join('\n'));
+  }
+  return files(results.length);
+}
+
 /* ///// Test counts ///// */
 
 /** The line bun test ends its summary with. */

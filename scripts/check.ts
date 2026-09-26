@@ -51,6 +51,8 @@ import {
   compilerFinding,
   files,
   ignoreCommentFindings,
+  lintedAsWritten,
+  lintedWithoutComments,
   taploFound,
   testCount,
   unreadSourceFinding,
@@ -301,69 +303,17 @@ function isAbsolutePath(line: string): boolean {
 
 /* ///// lint ///// */
 
-/** One message ESLint's json formatter reports against a file. */
-interface LintMessage {
-  readonly ruleId?: string | null;
-  readonly severity?: number;
-  readonly message?: string;
-  readonly line?: number;
-  readonly column?: number;
-}
-
-/** One file ESLint's json formatter reports on. */
-interface LintResult {
-  readonly filePath: string;
-  readonly messages: readonly LintMessage[];
-}
-
-/** Whether `value`, parsed from ESLint's json output, is one file's result. */
-function isLintResult(value: unknown): value is LintResult {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as { filePath?: unknown }).filePath === 'string' &&
-    Array.isArray((value as { messages?: unknown }).messages)
-  );
-}
-
-// The json formatter names every file ESLint linted, so the row counts them
-// and prints each problem itself. --config names the one config, so ESLint
-// runs no eslint.config.* nearer a file than the root.
+// Two passes, each with the json formatter, which names every file ESLint
+// linted, so the row counts them and prints each problem itself. The first
+// reads every comment and allows no warning. The second reads no comment as a
+// directive or as configuration, and the row refuses every report there from a
+// rule that reads comments, over the same files. rows.ts holds what the row
+// concludes from each. --config names the one config, so ESLint runs no
+// eslint.config.* nearer a file than the root.
 async function lint(): Promise<string> {
-  const finished = await run([
-    ...jsTool('eslint'),
-    '--config',
-    ESLINT_CONFIG,
-    '.',
-    '--max-warnings=0',
-    '--format',
-    'json',
-  ]);
-  let results: unknown;
-  try {
-    results = JSON.parse(plain(finished.stdout));
-  } catch {
-    // No json means ESLint stopped before it linted anything, a config error among them.
-    throw new Error(`eslint ${describe(finished)}`);
-  }
-  if (!Array.isArray(results) || !results.every((result) => isLintResult(result))) {
-    throw new Error(`eslint printed json that is not a list of file results: ${describe(finished)}`);
-  }
-  const problems = results.flatMap((result) =>
-    result.messages.map(
-      (message) =>
-        `${quote(result.filePath)}:${String(message.line ?? 0)}:${String(message.column ?? 0)}  ${message.severity === 2 ? 'error' : 'warning'}  ${message.message ?? ''}  ${message.ruleId ?? ''}`,
-    ),
-  );
-  if (finished.exitCode !== 0) {
-    throw new Error(
-      `eslint exited ${String(finished.exitCode)} over ${files(results.length)}:\n${[...problems, finished.stderr.trim()].filter((line) => line.length > 0).join('\n')}`,
-    );
-  }
-  if (results.length === 0) {
-    throw new Error('eslint linted no file, so it checked nothing');
-  }
-  return files(results.length);
+  const eslint = [...jsTool('eslint'), '--config', ESLINT_CONFIG];
+  const first = lintedAsWritten(await run([...eslint, '.', '--max-warnings=0', '--format', 'json']));
+  return lintedWithoutComments(await run([...eslint, '--no-inline-config', '.', '--format', 'json']), first);
 }
 
 /* ///// format ///// */
@@ -678,7 +628,8 @@ const rows: readonly Row[] = [
   },
   {
     name: 'lint',
-    checks: 'eslint over the tree with eslint.config.ts alone and no warnings allowed, counting the files it linted',
+    checks:
+      'eslint over the tree with eslint.config.ts alone and no warnings allowed, counting the files it linted, and no gate/visible-reason report a directive turned off, then eslint again over the same files with --no-inline-config and no report from a rule that reads comments',
     check: lint,
     runsCode: true,
   },
