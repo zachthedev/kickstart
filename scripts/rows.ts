@@ -121,13 +121,20 @@ function position(result: LintResult, message: LintMessage): string {
 /**
  * Every file result in the json one ESLint pass, `finished`, printed.
  *
+ * @remarks
+ * The json formatter prints no control sequence, and every child gets
+ * NO_COLOR, so the raw stdout is parsed. {@link plain} strips a one-byte CSI
+ * together with the backslash JSON writes before a quote, so stripping first
+ * would let a file name rewrite the json's structure. A message string is
+ * stripped where the row prints it, after the parse.
+ *
  * @throws When the pass printed no json, which means ESLint stopped before it
  * linted anything, or json that is not a list of file results
  */
 function lintResults(label: string, finished: Finished): LintResult[] {
   let results: unknown;
   try {
-    results = JSON.parse(plain(finished.stdout));
+    results = JSON.parse(finished.stdout);
   } catch {
     throw new Error(`${label} ${describe(finished)}`);
   }
@@ -159,7 +166,7 @@ export function lintedAsWritten(finished: Finished): LintResult[] {
   const problems = results.flatMap((result) =>
     result.messages.map(
       (message) =>
-        `${position(result, message)}  ${message.severity === 2 ? 'error' : 'warning'}  ${message.message ?? ''}  ${message.ruleId ?? ''}`,
+        `${position(result, message)}  ${message.severity === 2 ? 'error' : 'warning'}  ${plain(message.message ?? '')}  ${plain(message.ruleId ?? '')}`,
     ),
   );
   const suppressed = results.flatMap((result) =>
@@ -219,7 +226,7 @@ export function lintedWithoutComments(finished: Finished, first: readonly LintRe
       .filter((message) => isCommentRule(message.ruleId))
       .map(
         (message) =>
-          `${position(result, message)}  ${message.ruleId ?? ''} reports this with every directive and configuration comment ignored, and no comment may turn that rule off: ${message.message ?? ''}`,
+          `${position(result, message)}  ${plain(message.ruleId ?? '')} reports this with every directive and configuration comment ignored, and no comment may turn that rule off: ${plain(message.message ?? '')}`,
       ),
   );
   if (unwaived.length > 0) {

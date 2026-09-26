@@ -467,6 +467,49 @@ test('a @ts-expect-error with a description in words passes both passes', async 
   ).toBe('passed 1 file');
 });
 
+// A file name can hold the one-byte CSI before each quote. JSON writes such a
+// quote as a backslash and a quote, and a CSI strip ahead of the parse eats
+// the backslash, so the name would close its string and inject json tokens.
+// The names below would nest x's second-pass report under an injected key.
+test('a file name built to rewrite the json after a control-sequence strip leaves the second pass intact', () => {
+  const csi = String.fromCharCode(0x9b);
+  const smuggle = (text: string): string => text.replaceAll('"', `${csi}"`);
+  const x = `/abs/src/${smuggle('a","messages":[],"suppressedMessages":[],"hide":[{"k":"')}/x.ts`;
+  const y = `/abs/src/${smuggle('b"}],"q":"')}/y.ts`;
+  const report = { ruleId: NO_USE, severity: 2, message: 'Unexpected ESLint directive comment.', line: 2, column: 0 };
+  const first = printed([
+    { filePath: x, messages: [], suppressedMessages: [report] },
+    { filePath: y, messages: [], suppressedMessages: [] },
+  ]);
+  const second = printed(
+    [
+      { filePath: x, messages: [report], suppressedMessages: [] },
+      { filePath: y, messages: [], suppressedMessages: [] },
+    ],
+    1,
+  );
+
+  expect(() => lintedWithoutComments(second, lintedAsWritten(first))).toThrow(
+    `${quote(x)}:2:0  ${NO_USE} reports this with every directive and configuration comment ignored, and no comment may turn that rule off: Unexpected ESLint directive comment.`,
+  );
+});
+
+test('a control sequence in a message prints stripped', () => {
+  const esc = String.fromCharCode(0x1b);
+  const first = printed(
+    [
+      {
+        filePath: PROBE,
+        messages: [{ ruleId: 'no-debugger', severity: 2, message: `${esc}[31mred${esc}[0m`, line: 1, column: 1 }],
+        suppressedMessages: [],
+      },
+    ],
+    1,
+  );
+
+  expect(() => lintedAsWritten(first)).toThrow(`${quote(PROBE)}:1:1  error  red  no-debugger`);
+});
+
 /** One pass's printed json: `results` as ESLint's json formatter writes them. */
 function printed(results: unknown, exitCode = 0, stderr = ''): Finished {
   return { exitCode, stdout: JSON.stringify(results), stderr, heldOpen: false };
