@@ -129,8 +129,8 @@ apply. -->
 - Validate at the boundary and trust the inside. Input from a user, a file or a network is checked where it
   arrives, with zod where it has a shape.
 - A comment explains why the code is shaped as it is. What changed goes in the commit message.
-- Every process a script starts goes through `scripts/run.ts`, so every one starts from `PATH` alone, with no
-  shell.
+- Every process a gate script under `scripts/` starts goes through `scripts/run.ts`, so every one starts from
+  `PATH` alone, with no shell. A `package.json` script or a hook starts its tool itself.
 - A message that quotes input, such as a path or a value read from a file, JSON-quotes it. A newline or a carriage
   return in input then stays inside one line, where it cannot start a workflow command in a CI log.
 - ESLint lints and Prettier formats. An ESLint rule that is wrong for this code is turned off in
@@ -188,25 +188,30 @@ One command, and it is the whole gate. CI's gate job runs the same gate on Linux
 is a row in `scripts/check.ts`, never a step in a workflow. When a local run fails or disagrees with CI,
 [Troubleshooting](#troubleshooting) says why.
 
-`bun run check:quick` is the same gate without its slow rows, and the push hook runs it. `bun run check:rows`
-lists the rows and marks the slow ones. `bun run check <row>` runs one row, resolving the pinned binaries without
-installing them.
+`bun run check:quick` is the same gate without its slow rows, and the push hook runs it. `bun run check:rows` lists
+the rows and marks the slow ones. `bun run check <row>` runs the rows it names, one or several, resolving the pinned
+binaries without installing them.
 
 CI and the push hook run the gate by its file, `bun --no-env-file scripts/check.ts`, so no `node_modules/.bin` sits
 ahead of `PATH`. The `check`, `check:quick` and `check:rows` scripts pass `--no-env-file` too, and so does every
 `bun test` and every Bun a row starts directly. Bun then loads no env file into them.
 
-No row resolves a program from the machine's `PATH`. Bun is the process running the gate, and every other tool
-resolves through `mise which` or runs as a JavaScript tool. The programs the gate expects on `PATH` are the
-prerequisites [Setup](#setup) names. Each one starts from an absolute `PATH` entry outside the checkout alone, and
-a program found there through a link back into the checkout is passed over. The gate never reads the working
-directory for a program, and on Windows it tries `PATHEXT`'s extensions in their order. Every process the gate
-starts gets that same narrowed `PATH`.
+No row resolves a tool from the machine's `PATH`. Bun is the process running the gate, and every tool a row runs
+resolves through `mise which` or runs as a JavaScript tool. The programs the gate starts from `PATH` are git, mise
+and gh, the prerequisites [Setup](#setup) names beside Bun. Each one starts from an absolute `PATH` entry outside
+the checkout alone, and a program found there through a link back into the checkout is passed over. The gate never
+reads the working directory for a program, and on Windows it tries `PATHEXT`'s extensions in their order. Every
+process the gate starts gets that same narrowed `PATH`.
 
 A row starts each JavaScript tool through `bun x --bun --no-install <tool>` under the Bun running the gate. First it
 checks that `node_modules/.bin` holds the tool as a file, through every link. When it does not, the row fails with
 "`<tool>` is not installed in this checkout: run bun install --frozen-lockfile, or bun install --frozen-lockfile
---ignore-scripts in a worktree (CONTRIBUTING.md#setup).", since `bun x` would run a copy from elsewhere. The gate imports its own two packages, zod and Prettier, by their paths under `node_modules/`, so a
+--ignore-scripts in a worktree (CONTRIBUTING.md#setup).", since `bun x` would run a copy from elsewhere. The check
+covers the tool's command and never a package the tool loads. A package the checkout lacks resolves from a parent
+directory's `node_modules`, so a partial or copied install can run a parent directory's copy: the native TypeScript
+compiler finds its platform binary that way, and esbuild and workerd load their platform packages the same way. On
+Windows the `.bin` entry is a shim file that outlives its package, so the check passes and the start fails with `bun
+x`'s own error. The gate imports its own two packages, zod and Prettier, by their paths under `node_modules/`, so a
 missing install fails the row that loads one. The gate does not check `node_modules/` against `bun.lock`: CI
 installs frozen before its gate, and a stale install is yours to refresh ([Setup](#setup)).
 
@@ -474,18 +479,26 @@ safer and the condition that removes it. A red advisory check blocks the merge l
 
 ### Tool integrity
 
-Each tool the gate runs, and how its bytes are held to their source. The tiers are provenance, a checksum in a
-pinned tree, a checksum recorded by a third party, and a version alone.
+Each tool this repository pins, and who vouches for its bytes. The publisher's build attestation is a statement a
+workflow in the publisher's repository signed over the artifact's digest. The publisher's signature is made with a
+key the checking tool carries. The registry's record is a hash, or a signature, from a registry that never replaces
+a published version. The release's own checksum is GitHub's digest for the asset, or a checksum file beside it, in
+a release that can still change. A hash this repository computed comes from one download, and nothing outside the
+lockfile records it. A version alone names a release, and nothing recorded before the install vouches for its
+bytes. Setup names the programs you install yourself, and none of them takes a tier.
 
-- actionlint and zizmor: provenance. `mise.lock` records `github-attestations`, mise verifies the attestation on
+- actionlint and zizmor: the publisher's build attestation, held in `mise.lock`. mise checks the attestation on
   every install, and the gate refuses a lockfile that drops the line.
-- ShellCheck and taplo: a checksum in a pinned tree, `mise.lock`. taplo's checksums were computed once from its
-  release artifacts, as `mise.toml` records.
-- TypeScript, ESLint, typescript-eslint, the ESLint comments plugin, Prettier, commitlint, `yaml`, lefthook and
-  zod: a checksum in a pinned tree, `bun.lock`.
-- Bun itself: a version alone. `packageManager` plus the cooldown is the control, because the setup action
-  verifies no download.
-- mise itself: a publisher signature, which `jdx/mise-action` checks against the release's signed checksums.
+- ShellCheck: the release's own checksum, GitHub's digest for the asset, held in `mise.lock`.
+- taplo: a hash this repository computed, held in `mise.lock`. Its release carries no digest and no checksum file,
+  so its checksums come from one download per platform, as `mise.toml` records.
+- Every package `bun.lock` records, the JavaScript tools the gate and the hooks start among them: the registry's
+  record, held in `bun.lock`.
+- Bun itself: a version alone, named by `packageManager` in `package.json`. The cooldown is the control, because
+  the setup action checks no download.
+- mise itself, in CI: the publisher's signature, named by the `version:` line of each `jdx/mise-action` step. The
+  action checks the release's checksum file against the key it carries. Locally, mise is your own install
+  ([Setup](#setup)).
 
 `MISE_BACKENDS_<TOOL>` overrides a tool's backend from the environment, and no setting reports it
 ([Safety](#safety)).
@@ -517,6 +530,9 @@ A local run that fails or disagrees with CI:
   ([Setup](#setup)).
 - `bun install --frozen-lockfile` does not remove a package `bun.lock` no longer names, so a stale `node_modules/`
   can pass an import CI refuses. After a pull that drops a dependency, delete `node_modules/` and install again.
+- A partial or copied `node_modules/` can run a parent directory's copy of a package a tool loads, such as the
+  native TypeScript compiler's platform binary, which the gate's check does not read ([The gate](#the-gate)). A
+  clean frozen install is the fix.
 - A personal env file reaches every JavaScript tool `bun x` starts, the hooks, the `format` script and the gate's
   rows alike, since `bun x` ignores `--no-env-file`. A value there, such as `PRETTIER_EXPERIMENTAL_CLI`, can turn a
   row red locally alone. Move the file aside and run again ([Safety](#safety)).

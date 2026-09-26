@@ -9,26 +9,27 @@
  * CONTRIBUTING.md points at. CI's gate job runs this file on three platforms,
  * so a green run here is a green run there.
  *
- * No row resolves a program from the machine's PATH. Bun is the process
- * running this file, every JavaScript tool starts through `bun x --bun
- * --no-install` once the checkout's node_modules/.bin holds it, and every
- * other tool resolves through `mise which`. Every tool that searches for a
- * config runs with its one config named. Before any row, the gate refuses to
- * run beside a config a tool would read in place of the one the gate names, a
- * project config outside the named paths, a node_modules below the root,
- * anything that would steer how Bun resolves the gate's own imports, or a
- * workflow the workflows row would not read. No config's text is held:
- * code-owner review is the control on a change to one. The tracked files that
- * run code or waive a check before any row reads them, such as an env file, a
- * patchedDependencies key, a repeated JSON key, a bunfig.toml preload or an
- * inline zizmor waiver, are refused before a merge by the shared commits and
- * workflows jobs. A pull request cannot edit those jobs at the pin ci.yml
- * calls, and code-owner review of .github/workflows/ is the control on a
- * change to that pin or to the job that runs this file. Every row that walks
- * the tree says how many files it checked and fails when that is none. The
- * rows that run the repository's own code come last, and the preflight runs
- * again after each. No row carries a deadline: the CI job's timeout-minutes
- * bounds the gate.
+ * No row resolves a tool from the machine's PATH. Bun is the process running
+ * this file, every JavaScript tool starts through `bun x --bun --no-install`
+ * once the checkout's node_modules/.bin holds it, and every other tool resolves
+ * through `mise which`. The programs the gate starts from PATH are git, mise
+ * and gh, the prerequisites CONTRIBUTING.md's Setup names. Every tool that
+ * searches for a config runs with its one config named. Before any row, the
+ * gate refuses to run beside a config a tool would read in place of the one the
+ * gate names, a project config outside the named paths, a node_modules below
+ * the root, anything that would steer how Bun resolves the gate's own imports,
+ * a workflow the workflows row would not read, or a tracked path under a
+ * .github spelled in another case. No config's text is held: code-owner review
+ * is the control on a change to one. The tracked files that run code or waive a
+ * check before any row reads them, such as an env file, a patchedDependencies
+ * key, a repeated JSON key, a bunfig.toml preload or an inline zizmor waiver,
+ * are refused before a merge by the shared commits and workflows jobs. A pull
+ * request cannot edit those jobs at the pin ci.yml calls, and code-owner review
+ * of .github/workflows/ is the control on a change to that pin or to the job
+ * that runs this file. Every row that walks the tree says how many files it
+ * checked and fails when that is none. The rows that run the repository's own
+ * code come last, and the preflight runs again after each. No row carries a
+ * deadline: the CI job's timeout-minutes bounds the gate.
  */
 
 import { existsSync } from 'node:fs';
