@@ -891,6 +891,40 @@ test('a shell outside the workflows directory, or in an untracked workflow, yiel
   expect(await trackedFindings()).toEqual([]);
 });
 
+/* ///// .github spelled in another case ///// */
+
+/** The finding for a tracked `path` under `first`, a spelling of .github in another case. */
+const otherSpelling = (path: string, first: string): string =>
+  `${JSON.stringify(path)} sits under ${JSON.stringify(first)}, which spells .github in another case. zizmor and the shared workflows job read .github in that spelling alone, so on Linux nothing reads this file while a workflow can still run it. Move it under .github`;
+
+test.each([
+  [
+    'a composite action under .GitHub',
+    ['.GitHub/actions/x/action.yml'],
+    [],
+    [otherSpelling('.GitHub/actions/x/action.yml', '.GitHub')],
+  ],
+  [
+    'a workflow under .GITHUB, which the workflow spelling refuses too',
+    ['.GITHUB/workflows/x.yml'],
+    [],
+    [
+      `${JSON.stringify('.GITHUB/workflows/x.yml')} is a workflow outside .github/workflows/<name>.yml`,
+      otherSpelling('.GITHUB/workflows/x.yml', '.GITHUB'),
+    ],
+  ],
+  ['a .GitHub below the root', ['docs/.GitHub/x'], [], []],
+  ['the .github spelling', ['.github/actions/x/action.yml', '.github/CODEOWNERS'], [], []],
+  ['an untracked .GitHub on disk', [], ['.GitHub/actions/x/action.yml'], []],
+])(
+  '%s',
+  async (_label: string, tracked: readonly string[], untracked: readonly string[], refused: readonly string[]) => {
+    answerGit(tracked, untracked);
+
+    expect(await trackedFindings()).toEqual(refused.map((finding) => carrying(finding)));
+  },
+);
+
 /* ///// Personal files ///// */
 
 test.each(['lefthook-local.yml', '.lefthook-local'])(

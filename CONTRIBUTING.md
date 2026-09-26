@@ -288,7 +288,10 @@ the gate on your machine agrees with CI:
   `node_modules` under `scripts/`, since Bun resolves the gate's imports through them;
 - a tracked workflow whose path is not `.github/workflows/<name>.yml` exactly, since actionlint and zizmor read that
   spelling alone, a tracked workflow whose `shell:` is not `bash`, `sh` or `pwsh`, and one the gate cannot read as
-  YAML.
+  YAML;
+- a tracked file whose first directory spells `.github` in another case, such as `.GitHub`. zizmor and the shared
+  `workflows` job read `.github` in that spelling alone, so on Linux they never read such a file, while a workflow
+  can still run it and a Windows or macOS checkout merges it into `.github`.
 
 Each name is compared with its case folded, broader than any filesystem's comparison, so a spelling that a
 case-insensitive filesystem opens as a refused name is refused too. The first check names the work tree through
