@@ -309,7 +309,8 @@ any gate row reads them. A pull request cannot edit those jobs at the pin `ci.ym
 repeat them. Code-owner review of `.github/workflows/` is the control on a change to that pin, and on a change to
 the job that runs the gate. The shared jobs refuse:
 
-- a tracked `node_modules`, or a tracked path under one;
+- a tracked `node_modules`, or a tracked path under one, and every tracked symbolic link, since `bun install` keeps
+  one as it finds it and Bun reads through it to a file `bun.lock` never named;
 - a tracked env file Bun loads (`.env`, `.env.local`, and the `development`, `production` and `test` pairs), at
   any depth, since Bun loads one into every start beside it. A template such as `.env.example` passes, and so does
   your own untracked env file;
