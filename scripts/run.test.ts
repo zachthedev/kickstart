@@ -891,39 +891,30 @@ test('a shell outside the workflows directory, or in an untracked workflow, yiel
   expect(await trackedFindings()).toEqual([]);
 });
 
-/* ///// .github spelled in another case ///// */
+/* ///// Composite actions outside .github/actions ///// */
 
-/** The finding for a tracked `path` under `first`, a spelling of .github in another case. */
-const otherSpelling = (path: string, first: string): string =>
-  `${JSON.stringify(path)} sits under ${JSON.stringify(first)}, which spells .github in another case. zizmor and the shared workflows job read .github in that spelling alone, so on Linux nothing reads this file while a workflow can still run it. Move it under .github`;
+/** The finding for a tracked composite action at `path` outside .github/actions/. */
+const outsideActions = (path: string): string =>
+  `${JSON.stringify(path)} is a composite action outside .github/actions/, where zizmor reads none, while uses: ./<path> runs one from anywhere in the checkout. Move it under .github/actions/`;
 
 test.each([
+  ['an action under tools', ['tools/x/action.yml'], [outsideActions('tools/x/action.yml')]],
+  ['an action under .GitHub', ['.GitHub/actions/x/action.yml'], [outsideActions('.GitHub/actions/x/action.yml')]],
   [
-    'a composite action under .GitHub',
-    ['.GitHub/actions/x/action.yml'],
-    [],
-    [otherSpelling('.GitHub/actions/x/action.yml', '.GitHub')],
+    'an action under an 8.3 short name of .github',
+    ['GITHUB~1/actions/x/action.yml'],
+    [outsideActions('GITHUB~1/actions/x/action.yml')],
   ],
-  [
-    'a workflow under .GITHUB, which the workflow spelling refuses too',
-    ['.GITHUB/workflows/x.yml'],
-    [],
-    [
-      `${JSON.stringify('.GITHUB/workflows/x.yml')} is a workflow outside .github/workflows/<name>.yml`,
-      otherSpelling('.GITHUB/workflows/x.yml', '.GITHUB'),
-    ],
-  ],
-  ['a .GitHub below the root', ['docs/.GitHub/x'], [], []],
-  ['the .github spelling', ['.github/actions/x/action.yml', '.github/CODEOWNERS'], [], []],
-  ['an untracked .GitHub on disk', [], ['.GitHub/actions/x/action.yml'], []],
-])(
-  '%s',
-  async (_label: string, tracked: readonly string[], untracked: readonly string[], refused: readonly string[]) => {
-    answerGit(tracked, untracked);
+  ['an action at the root', ['action.yml'], [outsideActions('action.yml')]],
+  ['an action.yaml in another case', ['ci/Action.YAML'], [outsideActions('ci/Action.YAML')]],
+  ['an action under .github/actions', ['.github/actions/x/action.yml', '.github/actions/y/action.yaml'], []],
+  ['a file named otherwise outside .github/actions', ['tools/x/actions.yml', 'tools/x/other.yml'], []],
+  ['an untracked action on disk', [], []],
+])('%s', async (_label: string, tracked: readonly string[], refused: readonly string[]) => {
+  answerGit(tracked, tracked.length === 0 ? ['tools/x/action.yml'] : []);
 
-    expect(await trackedFindings()).toEqual(refused.map((finding) => carrying(finding)));
-  },
-);
+  expect(await trackedFindings()).toEqual([...refused]);
+});
 
 /* ///// Personal files ///// */
 

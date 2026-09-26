@@ -294,9 +294,10 @@ the gate on your machine agrees with CI:
 - a tracked workflow whose path is not `.github/workflows/<name>.yml` exactly, since actionlint and zizmor read that
   spelling alone, a tracked workflow whose `shell:` is not `bash`, `sh` or `pwsh`, and one the gate cannot read as
   YAML;
-- a tracked file whose first directory spells `.github` in another case, such as `.GitHub`. zizmor and the shared
-  `workflows` job read `.github` in that spelling alone, so on Linux they never read such a file, while a workflow
-  can still run it and a Windows or macOS checkout merges it into `.github`.
+- a tracked composite action, an `action.yml` or `action.yaml` in any case, outside `.github/actions/` in that
+  exact spelling. zizmor reads `.github` alone, in the `workflows` row and in the shared `workflows` job, while
+  `uses: ./<path>` runs an action from anywhere in the checkout, so an action at `tools/x` or under a `.GitHub`
+  would run with no audit.
 
 Each name is compared with its case folded, broader than any filesystem's comparison, so a spelling that a
 case-insensitive filesystem opens as a refused name is refused too. The first check names the work tree through

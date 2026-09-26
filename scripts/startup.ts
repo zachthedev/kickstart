@@ -269,28 +269,29 @@ function workflowFindings(path: string, segments: readonly string[]): string[] {
   return found;
 }
 
-/** The directory GitHub reads workflows, actions and the repository's settings files from. */
-const GITHUB_DIRECTORY = '.github';
+/** The one directory a composite action lives under, in this exact spelling. */
+const ACTIONS = '.github/actions/';
+
+/** The names a composite action's metadata file takes, compared folded. */
+const ACTION_NAMES: readonly string[] = ['action.yml', 'action.yaml'];
 
 /**
- * A finding when the tracked file at `path` sits under a first directory that
- * spells {@link GITHUB_DIRECTORY} in another case, such as `.GitHub`, or none.
+ * A finding when the tracked file at `path` is a composite action's metadata
+ * file outside {@link ACTIONS}, or none.
  *
  * @remarks
- * zizmor reads `.github` in that exact spelling, and so does the shared
- * workflows job's search for inline waivers, whose pathspec matches case. On
- * Linux neither reads a `.GitHub` directory, while a workflow can still run a
- * composite action from it. A Windows or macOS checkout writes the file into
- * the one `.github` directory, where the gate's zizmor honors a waiver in it.
- * The shared commits job does not refuse the spelling, so the gate does.
+ * zizmor, in the workflows row and in the shared workflows job, reads
+ * `.github` alone, while `uses: ./<path>` runs an action from anywhere in the
+ * checkout. An action at any other path, such as `tools/x` or a `.GitHub`
+ * spelled in another case, would run with no audit, so every one lives under
+ * `.github/actions/` in that spelling.
  */
-function githubSpellingFindings(path: string, segments: readonly string[]): string[] {
-  const first = path.split('/')[0] ?? '';
-  if (segments[0] !== GITHUB_DIRECTORY || first === GITHUB_DIRECTORY) {
+function actionFindings(path: string, segments: readonly string[]): string[] {
+  if (!ACTION_NAMES.includes(segments.at(-1) ?? '') || path.startsWith(ACTIONS)) {
     return [];
   }
   return [
-    `${quote(path)} sits under ${quote(first)}, which spells ${GITHUB_DIRECTORY} in another case. zizmor and the shared workflows job read ${GITHUB_DIRECTORY} in that spelling alone, so on Linux nothing reads this file while a workflow can still run it. Move it under ${GITHUB_DIRECTORY}`,
+    `${quote(path)} is a composite action outside ${ACTIONS}, where zizmor reads none, while uses: ./<path> runs one from anywhere in the checkout. Move it under ${ACTIONS}`,
   ];
 }
 
@@ -336,7 +337,7 @@ async function topLevelFinding(): Promise<string | undefined> {
  * a program in {@link CONFIG_SEARCHES} reads, a project config outside the
  * named paths, a `node_modules` directory on disk below the root, a tracked
  * workflow the workflows row would not read or whose shell no linter reads,
- * and a tracked file under a `.github` spelled in another case.
+ * and a tracked composite action outside `.github/actions/`.
  *
  * @remarks
  * git lists nothing until it names this checkout as its work tree, and a work
@@ -397,7 +398,7 @@ export async function trackedFindings(): Promise<string[]> {
     }
     if (isTracked) {
       found.push(...workflowFindings(path, segments));
-      found.push(...githubSpellingFindings(path, segments));
+      found.push(...actionFindings(path, segments));
     }
   }
   if (nested.size > 0) {
