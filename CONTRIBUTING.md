@@ -427,10 +427,10 @@ Every version heading in `CHANGELOG.md` links GitHub's compare view from the pre
 change in the release, hidden types included. The same list locally:
 
 ```sh
-git log --oneline v0.1.0..v0.2.0
+git log --oneline v<previous>..v<version>
 ```
 
-A first release has no previous tag, and `git log --oneline v0.1.0` lists it.
+A first release has no previous tag, and `git log --oneline v<version>` lists it.
 
 ## Dependencies
 
@@ -442,11 +442,12 @@ configuration, and that file is the one cooldown the run observes.
 `trustedDependencies` in `package.json` names the one dependency whose install script runs: lefthook, which
 installs the hooks. Naming it replaces Bun's built-in allow list.
 
-Two TypeScript compilers are installed on purpose. The `typecheck` row runs the native TypeScript 7 compiler from
-the `@typescript/native` alias. `typescript` stays on 6.x for typescript-eslint, which reads types through the 6.x
-compiler API and declares a peer range below 6.1.0. A rule in `.github/renovate.json` holds it below 6.1.0. Both
-ship a `tsc`, and `bun install` links the name to the package whose name sorts first, the alias. Once
-typescript-eslint supports TypeScript 7, `typescript` moves to 7.x, and the alias and the rule go.
+Two TypeScript compilers are installed on purpose. The `typecheck` row runs the native compiler from the
+`@typescript/native` alias. typescript-eslint reads types through the JavaScript compiler API, which the native
+compiler lacks, so `typescript` stays on the last major that carries the API, below the first release
+typescript-eslint's peer range excludes. A rule in `.github/renovate.json` holds it there. Both ship a `tsc`, and
+`bun install` links the name to the package whose name sorts first, the alias. Once typescript-eslint supports the
+native compiler, `typescript` moves to it, and the alias and the rule go.
 
 The advisory legs:
 

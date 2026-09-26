@@ -5,9 +5,9 @@ import prettierConfig from 'eslint-config-prettier';
 import tseslint from 'typescript-eslint';
 import { gatePlugin } from './scripts/eslint-plugin';
 
-// typescript-eslint reads types through the TypeScript 6.x compiler API, which the native TypeScript 7 compiler
-// does not expose, so the `typescript` package it resolves stays on 6.x beside the `@typescript/native` alias the
-// typecheck row runs.
+// typescript-eslint reads types through the JavaScript compiler API, which the native TypeScript compiler lacks,
+// so the `typescript` package it resolves stays on the last major carrying that API, beside the `@typescript/native`
+// alias the typecheck row runs.
 export default defineConfig(
   // flat config reads no .gitignore, so every ignored directory a lint could
   // reach is named here, the worktrees Claude Code writes included.

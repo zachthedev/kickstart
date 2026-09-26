@@ -272,9 +272,9 @@ export interface RunOptions {
 }
 
 /**
- * The proxy variables, in both spellings the tools' HTTP clients read. Bun
- * 1.4.2 on Windows reads a lowercase-only name directly but leaves it out when
- * it lists the environment, so {@link run} reads each one by name.
+ * The proxy variables, in both spellings the tools' HTTP clients read. The
+ * pinned Bun on Windows reads a lowercase-only name directly but leaves it out
+ * when it lists the environment, so {@link run} reads each one by name.
  */
 export const PROXY_NAMES: readonly string[] = [
   'HTTPS_PROXY',
@@ -288,8 +288,8 @@ export const PROXY_NAMES: readonly string[] = [
 /**
  * What every process that inherits the gate's environment gets, so no tool
  * colors its output: NO_COLOR set, and the two names that force color
- * removed. Bun 1.4.2 colors bun test's summary under FORCE_COLOR even with
- * NO_COLOR set.
+ * removed. The pinned Bun colors bun test's summary under FORCE_COLOR even
+ * with NO_COLOR set.
  */
 const COLORLESS: Readonly<Record<string, string | undefined>> = {
   NO_COLOR: '1',

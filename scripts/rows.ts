@@ -348,7 +348,7 @@ const PRETTIER_IGNORE = /(?:\/\/|\/\*|#|<!--|\{\{!(?:--)?)[\s*]*prettier[-]ignor
  *
  * @remarks
  * Prettier leaves the code after the comment as written, in every language it
- * formats, and no tool asks for a reason. Prettier 3.9.8 honors the comment
+ * formats, and no tool asks for a reason. The pinned Prettier honors the comment
  * when a `//`, `/*`, `#`, `<!--`, `{{!` or `{{!--` opener precedes the
  * keyword with nothing but spacing between, a block comment spanning lines
  * included, in every language it formats and every language embedded in one.

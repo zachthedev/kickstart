@@ -77,8 +77,9 @@ const BUN = process.execPath;
 /**
  * The flag every Bun the gate starts directly gets first, so no env file on
  * disk sets a variable inside the row: the test runs and the ShellCheck
- * stand-in. Bun 1.4.2 honors it over all eight names it loads, in every mode.
- * `bun x` ignores it, so no JavaScript tool gets it.
+ * stand-in. The pinned Bun honors it over every env file it loads, in each
+ * mode, as a case in run.test.ts holds. `bun x` ignores it, so no JavaScript
+ * tool gets it.
  */
 const NO_ENV_FILE = '--no-env-file';
 
@@ -246,12 +247,13 @@ async function tools(): Promise<undefined> {
 
 /* ///// typecheck ///// */
 
-/** The package.json name of the native TypeScript 7 compiler the typecheck row runs. */
+/** The package.json name of the native TypeScript compiler the typecheck row runs. */
 const NATIVE = '@typescript/native';
 
-// The native TypeScript 7 compiler, from the `@typescript/native` alias. The
-// 6.x `typescript` package that typescript-eslint needs ships a tsc too, and
-// bun install links a command two packages claim to the one whose name sorts
+// The native TypeScript compiler, from the `@typescript/native` alias. The
+// `typescript` package typescript-eslint needs, on the last major carrying the
+// JavaScript compiler API, ships a tsc too, and bun install links a command
+// two packages claim to the one whose name sorts
 // first, so node_modules/.bin/tsc is the alias's. The row first holds
 // `tsc --version` to the major package.json pins for the alias, so a renamed
 // alias or another tie-break turns it red. Each project is named, so

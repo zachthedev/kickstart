@@ -90,7 +90,7 @@ interface CountCase {
   readonly refused?: string;
 }
 
-// Each summary is written the way Bun 1.4.2 prints it.
+// Each summary is written the way the pinned Bun prints it.
 const COUNTS: readonly CountCase[] = [
   {
     label: 'a passing run',
@@ -174,7 +174,7 @@ const COUNTS: readonly CountCase[] = [
   {
     label: 'a forged Ran line on stdout over files holding no test',
     summary: ' 0 pass\n 0 fail\nRan 0 tests across 2 files. [5.00ms]\n',
-    stdout: 'bun test v1.4.2\nRan 9 tests across 2 files.\n',
+    stdout: 'bun test v9.8.7\nRan 9 tests across 2 files.\n',
     refused: 'ran no test',
   },
   {
@@ -271,21 +271,22 @@ test('every tracked TypeScript file read yields nothing', () => {
 
 /* ///// The compiler the typecheck row runs ///// */
 
-const PINNED = 'npm:typescript@7.0.2';
+// Versions no package.json pins, so a search for a real pin finds the pin file alone.
+const PINNED = 'npm:typescript@9.1.2';
 
 test.each([
-  ['the pinned major', 'Version 7.0.2\n', PINNED],
-  ['another minor of the pinned major', 'Version 7.1.4\r\n', PINNED],
-  ['the pinned major in color', `${colored('Version 7.0.2')}\n`, PINNED],
-  ['a plain version pin', 'Version 7.0.2\n', '7.0.2'],
+  ['the pinned major', 'Version 9.1.2\n', PINNED],
+  ['another minor of the pinned major', 'Version 9.4.0\r\n', PINNED],
+  ['the pinned major in color', `${colored('Version 9.1.2')}\n`, PINNED],
+  ['a plain version pin', 'Version 9.1.2\n', '9.1.2'],
 ])('%s passes', (_label: string, printed: string, spec: string) => {
   expect(compilerFinding(printed, spec)).toBeUndefined();
 });
 
 test.each([
-  ['the 6.x compiler', 'Version 6.0.3\n', PINNED, 'printed "Version 6.0.3", and package.json pins major 7'],
-  ['no version line', 'error TS5083: Cannot read file\n', PINNED, 'package.json pins major 7'],
-  ['a pin naming no version', 'Version 7.0.2\n', 'npm:typescript@latest', 'which names no version'],
+  ["another package's compiler", 'Version 8.3.1\n', PINNED, 'printed "Version 8.3.1", and package.json pins major 9'],
+  ['no version line', 'error TS5083: Cannot read file\n', PINNED, 'package.json pins major 9'],
+  ['a pin naming no version', 'Version 9.1.2\n', 'npm:typescript@latest', 'which names no version'],
 ])('%s is a finding', (_label: string, printed: string, spec: string, fragment: string) => {
   expect(compilerFinding(printed, spec)).toEqual(carrying(fragment));
 });
@@ -519,7 +520,7 @@ test.each([
 // row checks.
 const IGNORE = ['prettier', 'ignore'].join('-');
 
-// Every form Prettier 3.9.8 honors, measured per parser, and forms it does
+// Every form the pinned Prettier honors, measured per parser, and forms it does
 // not honor that the match still refuses.
 test.each([
   `// ${IGNORE}`,

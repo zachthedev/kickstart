@@ -584,6 +584,52 @@ test("git starts with its two config switches and nothing from the caller's envi
 
 /* ///// Tracked env files and node_modules ///// */
 
+/* ///// The env files Bun loads ///// */
+
+// The names Bun loads from the directory it starts in, per NODE_ENV mode,
+// written out here from its loader rather than read from any module. Every Bun
+// the gate starts directly passes --no-env-file, and these cases hold that the
+// pinned Bun honors the flag over each name, in each mode.
+const ENV_FILES: readonly string[] = [
+  '.env',
+  '.env.local',
+  '.env.development',
+  '.env.development.local',
+  '.env.production',
+  '.env.production.local',
+  '.env.test',
+  '.env.test.local',
+];
+
+test.each([
+  ['development', ['.env', '.env.local', '.env.development', '.env.development.local']],
+  ['production', ['.env', '.env.local', '.env.production', '.env.production.local']],
+  ['test', ['.env', '.env.test', '.env.test.local']],
+])(
+  "in %s mode Bun loads that mode's env files, and none under --no-env-file",
+  (mode: string, loaded: readonly string[]) => {
+    // Each file sets its own variable, so the names that reach the child name the files Bun read.
+    const variable = (name: string): string => `GATE_ENV_${String(ENV_FILES.indexOf(name))}`;
+    for (const name of ENV_FILES) {
+      writeFileSync(join(cwd, name), `${variable(name)}=loaded\n`);
+    }
+    writeFileSync(
+      join(cwd, 'print.ts'),
+      "console.log(Object.keys(process.env).filter((name) => name.startsWith('GATE_ENV_')).sort().join(','));\n",
+    );
+    const env = Object.fromEntries(
+      Object.entries(process.env).filter(([name]) => !name.toUpperCase().startsWith('GATE_ENV_')),
+    );
+    const read = (flags: readonly string[]): string =>
+      Bun.spawnSync({ cmd: [process.execPath, ...flags, 'print.ts'], cwd, env: { ...env, NODE_ENV: mode } })
+        .stdout.toString()
+        .trim();
+
+    expect(read([])).toBe(loaded.map(variable).sort().join(','));
+    expect(read(['--no-env-file'])).toBe('');
+  },
+);
+
 /** The arguments of the git call that names the work tree. */
 const TOP_LEVEL = 'rev-parse --show-toplevel';
 
