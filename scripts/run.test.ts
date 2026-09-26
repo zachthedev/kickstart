@@ -584,19 +584,6 @@ test("git starts with its two config switches and nothing from the caller's envi
 
 /* ///// Tracked env files and node_modules ///// */
 
-// The names Bun 1.4.2 loads from the directory it starts in, written out here
-// from its loader rather than read from the module.
-const BUN_ENV_NAMES: readonly string[] = [
-  '.env',
-  '.env.local',
-  '.env.development',
-  '.env.development.local',
-  '.env.production',
-  '.env.production.local',
-  '.env.test',
-  '.env.test.local',
-];
-
 /** The arguments of the git call that names the work tree. */
 const TOP_LEVEL = 'rev-parse --show-toplevel';
 
@@ -623,23 +610,6 @@ function gitArgs(): (readonly string[])[] {
     .filter((call) => call.name === 'git')
     .map((call) => call.args);
 }
-
-test.each([...BUN_ENV_NAMES])('a tracked %p is a finding naming it, at the root and below', async (name: string) => {
-  answerGit([name, `docs/${name}`]);
-
-  const found = await trackedFindings();
-
-  expect(found).toEqual([
-    carrying(`${JSON.stringify(name)} is an env file Bun loads`),
-    carrying(`${JSON.stringify(`docs/${name}`)} is an env file Bun loads`),
-  ]);
-});
-
-test('a tracked env file in another case is a finding naming it as it is spelled', async () => {
-  answerGit(['.Env.Production.Local']);
-
-  expect(await trackedFindings()).toEqual([carrying('".Env.Production.Local" is an env file Bun loads')]);
-});
 
 test('git names the work tree, then lists the whole index once and the untracked files once, with no pathspec', async () => {
   answerGit([]);
@@ -670,8 +640,8 @@ test('a git that cannot name the work tree is the one finding, and nothing is li
   expect(gitArgs()).toEqual([['rev-parse', '--show-toplevel']]);
 });
 
-test('an untracked config a tool with no named form reads is a finding, and an untracked env file is not', async () => {
-  answerGit([], ['.github/actionlint.yaml', '.lefthook.yml', '.env']);
+test('an untracked config a tool with no named form reads is a finding', async () => {
+  answerGit([], ['.github/actionlint.yaml', '.lefthook.yml']);
 
   expect(await trackedFindings()).toEqual([
     carrying('".github/actionlint.yaml" is an actionlint config'),
@@ -718,19 +688,6 @@ test('the untracked listing leaves the root node_modules out and nothing below i
   expect(others.filter((arg) => /node_modules/i.test(arg))).toEqual(['--exclude=/node_modules/']);
 });
 
-test('env files on disk that the index does not hold yield no finding', async () => {
-  writeFileSync(join(cwd, '.env'), '');
-  answerGit([], [...BUN_ENV_NAMES, 'docs/.env.local']);
-
-  expect(await trackedFindings()).toEqual([]);
-});
-
-test('a tracked env template, or an env file for a mode Bun never loads, yields no finding', async () => {
-  answerGit(['.env.example', '.env.local.template', 'docs/.env.staging', 'env.example', 'src/dotenv.ts']);
-
-  expect(await trackedFindings()).toEqual([]);
-});
-
 /* ///// Project configs ///// */
 
 test('a tsconfig.json outside the paths expected.ts names is a finding, tracked or not', async () => {
@@ -750,129 +707,6 @@ test('the project configs expected.ts names and scripts/tsconfig.json yield no f
   answerGit(['tsconfig.json', 'scripts/tsconfig.json']);
 
   expect(await trackedFindings()).toEqual([]);
-});
-
-/* ///// Keys the gate refuses in a tracked JSON file ///// */
-
-/** A backslash, spelled so no formatter decodes the escape it starts. */
-const BACKSLASH = String.fromCharCode(92);
-
-interface KeyCase {
-  readonly label: string;
-  /** Every file the case writes below the working directory, by path. */
-  readonly files: Readonly<Record<string, string>>;
-  /** The paths the index lists. */
-  readonly tracked: readonly string[];
-  /** The paths the untracked listing names. */
-  readonly untracked?: readonly string[];
-  /** A fragment of each finding, in order, or none when the tree passes. */
-  readonly refused: readonly string[];
-}
-
-const KEYS: readonly KeyCase[] = [
-  {
-    label: 'a package.json repeating a top-level key',
-    files: { 'package.json': '{ "patchedDependencies": {}, "name": "a", "patchedDependencies": { "x@1.0.0": "p" } }' },
-    tracked: ['package.json'],
-    refused: [
-      '"package.json" carries a patchedDependencies key',
-      '"package.json" repeats "patchedDependencies" within one object, and Bun reads the first',
-    ],
-  },
-  {
-    label: 'a nested package.json repeating a key inside an object',
-    files: { 'tools/sub/package.json': '{ "scripts": { "a": "x", "a": "y" } }' },
-    tracked: ['tools/sub/package.json'],
-    refused: ['"tools/sub/package.json" repeats "a" within one object'],
-  },
-  {
-    label: 'a key repeated under an escaped spelling',
-    files: {
-      'package.json': `{ "patchedDependencie${BACKSLASH}u0073": {}, "patchedDependencies": {} }`,
-    },
-    tracked: ['package.json'],
-    refused: [
-      '"package.json" carries a patchedDependencies key',
-      '"package.json" repeats "patchedDependencies" within one object',
-    ],
-  },
-  {
-    label: 'a tsconfig.json repeating compilerOptions.paths',
-    files: { 'tsconfig.json': '{ "compilerOptions": { "paths": {}, "paths": { "x": ["./x.ts"] } } }' },
-    tracked: ['tsconfig.json'],
-    refused: ['"tsconfig.json" repeats "paths" within one object'],
-  },
-  {
-    label: 'a base a tsconfig.json extends repeating a key',
-    files: {
-      'tsconfig.json': '{ "extends": "./tsconfig.base" }',
-      'tsconfig.base.json': '{ "compilerOptions": { "baseUrl": ".", "baseUrl": "./src" } }',
-    },
-    tracked: ['tsconfig.json', 'tsconfig.base.json'],
-    refused: ['"tsconfig.json", through "tsconfig.base.json", repeats "baseUrl" within one object'],
-  },
-  {
-    label: 'a package.json that does not parse as plain JSON',
-    files: { 'package.json': '{ "name": "a", }' },
-    tracked: ['package.json'],
-    refused: ['"package.json" does not parse as plain JSON, so which keys it holds is unknown'],
-  },
-  {
-    label: 'a package.json carrying patchedDependencies beside a value nested deeper than jq reads',
-    files: {
-      'package.json': `{ "deep": ${'['.repeat(300)}${']'.repeat(300)}, "patchedDependencies": { "x@1.0.0": "patches/x.patch" } }`,
-    },
-    tracked: ['package.json'],
-    refused: [
-      '"package.json" carries a patchedDependencies key, and bun install applies each patch it names over the package bun.lock pins, so a tool a row runs can change while its pin stays the same. Remove it',
-    ],
-  },
-  {
-    label: 'a nested package.json carrying patchedDependencies, in another case',
-    files: { 'tools/sub/Package.JSON': '{ "patchedDependencies": {} }' },
-    tracked: ['tools/sub/Package.JSON'],
-    refused: ['"tools/sub/Package.JSON" carries a patchedDependencies key'],
-  },
-  {
-    label: 'patchedDependencies below the top of a package.json, or in a tsconfig.json',
-    files: {
-      'package.json': '{ "config": { "patchedDependencies": {} } }',
-      'tsconfig.json': '{ "patchedDependencies": {} }',
-    },
-    tracked: ['package.json', 'tsconfig.json'],
-    refused: [],
-  },
-  {
-    label: 'one key in two objects, and a repeat inside a string',
-    files: {
-      'package.json': `{ "scripts": { "a": "x" }, "config": { "a": "${BACKSLASH}"b${BACKSLASH}": 1, ${BACKSLASH}"b${BACKSLASH}": 2" } }`,
-    },
-    tracked: ['package.json'],
-    refused: [],
-  },
-  {
-    label: 'a package.json on disk that the index does not hold',
-    files: { 'package.json': '{ "a": 1, "a": 2 }' },
-    tracked: [],
-    untracked: ['package.json'],
-    refused: [],
-  },
-  {
-    label: 'an extends naming a package, which the shared commits job refuses',
-    files: { 'tsconfig.json': '{ "extends": "@tsconfig/strictest" }' },
-    tracked: ['tsconfig.json'],
-    refused: [],
-  },
-];
-
-test.each([...KEYS])('$label', async ({ files, tracked, untracked, refused }: KeyCase) => {
-  for (const [path, text] of Object.entries(files)) {
-    mkdirSync(dirname(join(cwd, path)), { recursive: true });
-    writeFileSync(join(cwd, path), text);
-  }
-  answerGit(tracked, untracked);
-
-  expect(await trackedFindings()).toEqual(refused.map((fragment) => carrying(fragment)));
 });
 
 test.each([
@@ -1009,64 +843,6 @@ test('a shell outside the workflows directory, or in an untracked workflow, yiel
   answerGit(['.github/actions/probe/action.yml'], ['.github/workflows/ci.yml']);
 
   expect(await trackedFindings()).toEqual([]);
-});
-
-/* ///// Inline zizmor waivers ///// */
-
-interface WaiverCase {
-  readonly label: string;
-  readonly path: string;
-  readonly text: string;
-  readonly tracked: boolean;
-  readonly refused: boolean;
-}
-
-const WAIVERS: readonly WaiverCase[] = [
-  {
-    label: 'a waiver in a tracked workflow',
-    path: '.github/workflows/ci.yml',
-    text: 'jobs: {} # zizmor: ignore[unpinned-uses]\n',
-    tracked: true,
-    refused: true,
-  },
-  {
-    label: 'a waiver in the tracked dependabot.yml',
-    path: '.github/dependabot.yml',
-    text: 'version: 2 # zizmor: ignore[dependabot-cooldown]\n',
-    tracked: true,
-    refused: true,
-  },
-  {
-    label: 'a waiver in another case and spacing in a composite action',
-    path: '.github/actions/probe/action.yml',
-    text: 'runs: {} # ZIZMOR : IGNORE [template-injection]\n',
-    tracked: true,
-    refused: true,
-  },
-  {
-    label: 'the words outside .github',
-    path: 'docs/notes.md',
-    text: 'A `zizmor: ignore[x]` comment is refused.\n',
-    tracked: true,
-    refused: false,
-  },
-  {
-    label: 'a waiver in an untracked workflow',
-    path: '.github/workflows/ci.yml',
-    text: 'jobs: {} # zizmor: ignore[unpinned-uses]\n',
-    tracked: false,
-    refused: false,
-  },
-];
-
-test.each([...WAIVERS])('$label', async ({ path, text, tracked, refused }: WaiverCase) => {
-  mkdirSync(dirname(join(cwd, path)), { recursive: true });
-  writeFileSync(join(cwd, path), text);
-  answerGit(tracked ? [path] : [], tracked ? [] : [path]);
-
-  expect(await trackedFindings()).toEqual(
-    refused ? [carrying(`${JSON.stringify(path)} carries a zizmor ignore comment`)] : [],
-  );
 });
 
 /* ///// Personal files ///// */

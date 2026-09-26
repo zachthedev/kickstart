@@ -265,9 +265,8 @@ the gate on your machine agrees with CI:
   `lefthook.yml` is missing, and a tracked `lefthook-local`, `lefthook-local.*`, `.lefthook-local` or
   `.lefthook-local.*`, which lefthook merges over `lefthook.yml`. `.gitignore` lists the local ones for your own
   use;
-- a `.config` directory at the root, which mise, lefthook and commitlint's cosmiconfig each read, and a root
-  `package.yaml` or a `cosmiconfig` key in the root `package.json`. cosmiconfig reads its own settings from all
-  three whatever `--config` names, and a `$import` there runs a module inside commitlint;
+- a `.config` directory at the root, which mise, lefthook and commitlint's cosmiconfig each read whatever a flag
+  names;
 - a `node_modules` directory anywhere below the root, tracked or not. Bun, tsc and typescript-eslint resolve a bare
   import from the nearest one, so it replaces the installed package for the files beside it;
 - a `tsconfig.json` or `jsconfig.json` at a path `scripts/expected.ts` does not list, tracked or not, since
@@ -277,21 +276,6 @@ the gate on your machine agrees with CI:
 - a tracked workflow whose path is not `.github/workflows/<name>.yml` exactly, since actionlint and zizmor read that
   spelling alone, a tracked workflow whose `shell:` is not `bash`, `sh` or `pwsh`, and one the gate cannot read as
   YAML.
-
-It also refuses these, tracked alone:
-
-- a tracked env file Bun loads (`.env`, `.env.local`, and the `development`, `production` and `test` pairs), at
-  any depth, since Bun loads one into every start beside it. A template such as `.env.example` passes, and so does
-  your own untracked env file;
-- a key repeated within one object of a tracked `package.json`, `tsconfig.json` or `jsconfig.json`, or of a file
-  its `extends` names. Bun reads the first copy where the shared `commits` job reads the last, so a repeated
-  `patchedDependencies` or `paths` could pass that job while Bun applies it. A file that does not parse as plain
-  JSON is refused too;
-- a `patchedDependencies` key in a tracked `package.json`, since `bun install` applies each patch it names over the
-  package `bun.lock` pins. The shared `commits` job refuses one too, but its check passes a file jq cannot parse,
-  such as one nested deeper than jq reads;
-- a `zizmor: ignore[...]` comment in a tracked file under `.github`. A waiver is an entry in `.github/zizmor.yml`.
-  The shared `workflows` job refuses one too, but its search passes over a file `.gitattributes` marks `-diff`.
 
 Each name is compared with its case folded, broader than any filesystem's comparison, so a spelling that a
 case-insensitive filesystem opens as a refused name is refused too. The first check names the work tree through
@@ -305,16 +289,30 @@ repeat them. Code-owner review of `.github/workflows/` is the control on a chang
 the job that runs the gate. The shared jobs refuse:
 
 - a tracked `node_modules`, or a tracked path under one;
-- a tracked `.npmrc` at any depth, since `bun install` fetches from a registry one names;
+- a tracked env file Bun loads (`.env`, `.env.local`, and the `development`, `production` and `test` pairs), at
+  any depth, since Bun loads one into every start beside it. A template such as `.env.example` passes, and so does
+  your own untracked env file;
+- a `patchedDependencies` key in any tracked `package.json`, since `bun install` applies each patch it names over
+  the package `bun.lock` pins, and an `exports` key, since Bun resolves a bare import of the package's own name
+  through it;
+- a key repeated within one object of a tracked `package.json`, `tsconfig.json` or `jsconfig.json`, or of a file
+  its `extends` names, and any of them that does not parse as plain JSON. Bun reads the first copy of a key where
+  another reader takes the last;
+- a root `package.yaml`, a `cosmiconfig` key in the root `package.json`, and a tracked root `.config`. cosmiconfig
+  reads its own settings from each whatever `--config` names, and a `$import` there runs a module inside
+  commitlint;
 - a `bunfig.toml` holding any key but `[install] minimumReleaseAge`;
 - `paths` or `baseUrl` in a tracked `tsconfig.json` or `jsconfig.json` or in a file its `extends` chain reads;
+- a `zizmor: ignore[...]` comment in a tracked file under `.github`, since a waiver is an entry in
+  `.github/zizmor.yml`;
 - a root file named like a program the gate, its hooks or an install start (`bun`, `bunx`, `gh`, `git`, `mise` or
   `node`), and a root entry named `'`, which actionlint would read in place of the ShellCheck stand-in.
 
 Review refuses what no row checks, since each such file sits in the diff and runs no code: anything under `dist/`,
 `coverage/`, `.claude/worktrees/` or a `.git`, `.sl`, `.svn`, `.hg` or `.jj` directory, a JavaScript or declaration
 file beyond `commitlint.config.js`, a path below a personal file's name, and a tracked
-`.claude/settings.local.json`.
+`.claude/settings.local.json`. Review also refuses a tracked `.npmrc`: a registry it names fails every package's
+integrity check against `bun.lock`.
 
 The `tools` row reads `mise.toml` and `mise.lock` against the expectations in `scripts/tools.ts`, and installs
 from the lockfile only after that read passes. `mise.toml` holds `[tools]`, `[tool_config]` and `[settings]`
