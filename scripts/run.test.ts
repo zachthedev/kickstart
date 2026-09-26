@@ -457,9 +457,9 @@ test.each(PLANTED_CASES)(
   },
 );
 
-/* ///// JavaScript tools through bunx ///// */
+/* ///// JavaScript tools through bun x ///// */
 
-/** The entry bunx reads for `tool` on this platform, below node_modules/.bin. */
+/** The entry `bun x` reads for `tool` on this platform, below node_modules/.bin. */
 function binEntry(tool: string): string {
   return join(cwd, 'node_modules', '.bin', WINDOWS ? `${tool}.exe` : tool);
 }
@@ -493,7 +493,7 @@ interface InstallCase {
 
 const INSTALLS: readonly InstallCase[] = [
   {
-    label: 'a file at the entry bunx reads',
+    label: 'a file at the entry bun x reads',
     plant: (entry: string) => {
       writeFileSync(entry, '');
     },

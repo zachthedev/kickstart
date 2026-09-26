@@ -204,15 +204,17 @@ export function resolveProgram(program: string): string | undefined {
  * through `bun x --bun --no-install` under the Bun running the gate.
  *
  * @remarks
- * `bun x` is bunx. It runs the command the install put in the working
- * directory's `node_modules/.bin`, under Bun rather than a `node` on PATH,
- * and it fetches nothing. When that directory lacks the command, bunx runs a
- * copy from a parent directory's `node_modules/.bin`, from PATH or from its
- * own cache, none of them the version bun.lock pins. So the command is
- * refused first unless the entry bunx reads resolves, through every link, to
- * a regular file: `<tool>.exe` on Windows, and `<tool>` elsewhere, where the
- * install writes a link. A link left behind by a removed package points at
- * nothing. bunx ignores `--no-env-file`, so none is passed.
+ * `bun x` runs the command the install put in the working directory's
+ * `node_modules/.bin`, under Bun rather than a `node` on PATH, and it fetches
+ * nothing. When that directory lacks the command, `bun x` runs a copy from a
+ * parent directory's `node_modules/.bin`, from PATH or from its own cache,
+ * none of them the version bun.lock pins. So the command is refused first
+ * unless the entry `bun x` reads resolves, through every link, to a regular
+ * file: `<tool>.exe` on Windows, and `<tool>` elsewhere, where the install
+ * writes a link. The check reads the tool's command alone, never a package the
+ * tool loads. On Windows the `.exe` is a shim file that outlives its package,
+ * so the check passes after the package is gone and the start fails with
+ * `bun x`'s own error. `bun x` ignores `--no-env-file`, so none is passed.
  *
  * @throws When the entry is missing, a dangling link or not a file, naming
  * the install to run

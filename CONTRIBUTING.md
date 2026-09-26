@@ -40,9 +40,9 @@ Code worktree starts with no `node_modules/`.
 
 The commit hooks lint and format the staged files and check every commit message before it is recorded. The push
 hook runs the quick gate and refuses the push when it fails. The commit hooks start their tools as
-`bunx --bun --no-install <tool>`, which runs the copy `node_modules/.bin` holds, under Bun rather than a `node` on
+`bun x --bun --no-install <tool>`, which runs the copy `node_modules/.bin` holds, under Bun rather than a `node` on
 `PATH`, and fetches nothing. The `format` script starts Prettier the same way. The hooks are no control
-([Safety](#safety)).
+([Safety](#safety)), and they check nothing before a start ([Troubleshooting](#troubleshooting)).
 
 `.claude/settings.json` allows `git status` alone, the allowlist every `zachthedev` repository shares, with deny
 entries for `--output` and `--no-index`, and adds nothing to it.
@@ -62,11 +62,13 @@ What reaches the tools from your own environment:
 - `BUN_OPTIONS` reaches every direct Bun start: the gate itself through `bun run check`, `check:quick`,
   `check:rows` and the push hook, `bun run markers`, and the `prepare` script's lefthook install. A `--preload` in
   it runs a module first in each. The gate withholds it from the processes it starts, and a tool started through
-  `bunx --bun --no-install` does not read it. Leave it unset.
+  `bun x --bun --no-install` does not read it. No tool this repository runs starts Bun children of its own. A tool
+  that does, such as wrangler or vitest, passes `BUN_OPTIONS` and `BUN_INSPECT_PRELOAD` on to them, and a
+  repository that runs one names it here. Leave it unset.
 - `BUN_INSPECT`, `BUN_INSPECT_CONNECT_TO` and `BUN_INSPECT_PRELOAD`. Leave them unset too. The last runs a module in
   every direct Bun start, the gate's `bun test` rows among them, and nothing in the hooks or the gate clears them.
-- A personal env file. bunx ignores `--no-env-file`, so an untracked `.env` reaches every JavaScript tool the hooks,
-  the `format` script and the gate's rows start, and can change what one reports
+- A personal env file. `bun x` ignores `--no-env-file`, so an untracked `.env` reaches every JavaScript tool the
+  hooks, the `format` script and the gate's rows start, and can change what one reports
   ([Troubleshooting](#troubleshooting)).
 - `MISE_BACKENDS_<TOOL>`. Leave it unset. It overrides a tool's backend from the environment, no setting reports
   it, and the gate does not close that gap.
@@ -201,11 +203,10 @@ a program found there through a link back into the checkout is passed over. The 
 directory for a program, and on Windows it tries `PATHEXT`'s extensions in their order. Every process the gate
 starts gets that same narrowed `PATH`.
 
-A row starts each JavaScript tool through `bun x --bun --no-install <tool>` under the Bun running the gate, which is
-bunx. First it checks that `node_modules/.bin` holds the tool as a file, through every link. When it does not, the
-row fails with "`<tool>` is not installed in this checkout: run bun install --frozen-lockfile, or bun install
---frozen-lockfile --ignore-scripts in a worktree (CONTRIBUTING.md#setup).", since bunx would run a copy from
-elsewhere. The gate imports its own two packages, zod and Prettier, by their paths under `node_modules/`, so a
+A row starts each JavaScript tool through `bun x --bun --no-install <tool>` under the Bun running the gate. First it
+checks that `node_modules/.bin` holds the tool as a file, through every link. When it does not, the row fails with
+"`<tool>` is not installed in this checkout: run bun install --frozen-lockfile, or bun install --frozen-lockfile
+--ignore-scripts in a worktree (CONTRIBUTING.md#setup).", since `bun x` would run a copy from elsewhere. The gate imports its own two packages, zod and Prettier, by their paths under `node_modules/`, so a
 missing install fails the row that loads one. The gate does not check `node_modules/` against `bun.lock`: CI
 installs frozen before its gate, and a stale install is yours to refresh ([Setup](#setup)).
 
@@ -506,13 +507,14 @@ A local run that fails or disagrees with CI:
 - A row that says a tool "is not installed in this checkout", or a hook that cannot find its tool, means a missing
   install. Run `bun install --frozen-lockfile`, or add `--ignore-scripts` in a worktree ([Setup](#setup)).
 - A stale install runs another version. When `node_modules/.bin` holds a tool at the wrong version, the gate's
-  check passes and bunx runs that copy. When the checkout holds none, a hook's bunx runs a copy from a parent
-  directory, `PATH` or its own cache. Run `bun install --frozen-lockfile` after every pull, every branch switch and
-  in each worktree ([Setup](#setup)).
+  check passes and `bun x` runs that copy. A hook and a `package.json` script check nothing before their start, so
+  when the checkout holds none, their `bun x` runs a copy from a parent directory, `PATH` or its own cache and can
+  report green. Run `bun install --frozen-lockfile` after every pull, every branch switch and in each worktree
+  ([Setup](#setup)).
 - `bun install --frozen-lockfile` does not remove a package `bun.lock` no longer names, so a stale `node_modules/`
   can pass an import CI refuses. After a pull that drops a dependency, delete `node_modules/` and install again.
-- A personal env file reaches every JavaScript tool bunx starts, the hooks, the `format` script and the gate's
-  rows alike, since bunx ignores `--no-env-file`. A value there, such as `PRETTIER_EXPERIMENTAL_CLI`, can turn a
+- A personal env file reaches every JavaScript tool `bun x` starts, the hooks, the `format` script and the gate's
+  rows alike, since `bun x` ignores `--no-env-file`. A value there, such as `PRETTIER_EXPERIMENTAL_CLI`, can turn a
   row red locally alone. Move the file aside and run again ([Safety](#safety)).
 - A gate that differs from CI can come from your environment. `BUN_OPTIONS` reaches the gate's own process
   before its first line, and `BUN_INSPECT`, `BUN_INSPECT_CONNECT_TO` and `BUN_INSPECT_PRELOAD` reach its `bun test`
