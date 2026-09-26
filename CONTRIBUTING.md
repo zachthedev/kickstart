@@ -59,12 +59,12 @@ read.
 
 What reaches the tools from your own environment:
 
-- `BUN_OPTIONS` reaches every direct Bun start: the gate itself through `bun run check`, `check:quick`,
-  `check:rows` and the push hook, `bun run markers`, and the `prepare` script's lefthook install. A `--preload` in
-  it runs a module first in each. The gate withholds it from the processes it starts, and a tool started through
-  `bun x --bun --no-install` does not read it. No tool this repository runs starts Bun children of its own. A tool
-  that does, such as wrangler or vitest, passes `BUN_OPTIONS` and `BUN_INSPECT_PRELOAD` on to them, and a
-  repository that runs one names it here. Leave it unset.
+- `BUN_OPTIONS` reaches every direct Bun start: the gate itself through `bun run check`, `check:quick`, `check:rows`
+  and the push hook, `bun run markers`, and the `prepare` script's lefthook install. A `--preload` in it runs a
+  module first in each. The gate withholds it from the processes it starts, and a tool started through
+  `bun x --bun --no-install` does not read it. No JavaScript tool the gate or the hooks start through `bun x` starts
+  Bun children of its own. A tool that does, such as wrangler or vitest, passes `BUN_OPTIONS` and
+  `BUN_INSPECT_PRELOAD` on to them, and a repository that runs one names it here. Leave it unset.
 - `BUN_INSPECT`, `BUN_INSPECT_CONNECT_TO` and `BUN_INSPECT_PRELOAD`. Leave them unset too. The last runs a module in
   every direct Bun start, the gate's `bun test` rows among them, and nothing in the hooks or the gate clears them.
 - A personal env file. `bun x` ignores `--no-env-file`, so an untracked `.env` reaches every JavaScript tool the
@@ -303,11 +303,10 @@ the gate on your machine agrees with CI:
   `uses: ./<path>` runs an action from anywhere in the checkout, so an action at `tools/x` or under a `.GitHub`
   would run with no audit.
 
-Each name is compared with its case folded, broader than any filesystem's comparison, so a spelling that a
-case-insensitive filesystem opens as a refused name is refused too. The first check names the work tree through
-`git rev-parse --show-toplevel` and refuses one other than this checkout: git passes over a `.git` it cannot read,
-an empty directory among them, and lists a parent repository's files without a word. Every git the gate starts runs
-with no system or global config and nothing inherited from your environment.
+Each name is compared with its case folded, so a case variant of a refused name is refused too. The first check
+names the work tree through `git rev-parse --show-toplevel` and refuses one other than this checkout: git passes
+over a `.git` it cannot read, an empty directory among them, and lists a parent repository's files without a word.
+Every git the gate starts runs with no system or global config and nothing inherited from your environment.
 
 The shared `commits` and `workflows` jobs refuse, before a merge, the files that run code or waive a check before
 any gate row reads them. A pull request cannot edit those jobs at the pin `ci.yml` calls, so the gate does not
@@ -554,6 +553,10 @@ A local run that fails or disagrees with CI:
   `safe.directory` entry, by design.
 - A row that fails because a process its tool started still holds the tool's output leaves that process running,
   since nothing the gate can reach ends a process whose parent is gone. Find it and end it.
+- On a Windows checkout, a case variant or an 8.3 short name of a tracked path, such as `GITHUB~1` for `.github` or
+  `packag~1.jso` for `package.json`, can merge two tracked paths into one file, and git warns of a collision. Your
+  local gate then reads a file the diff does not show, while the shared jobs on Linux read the real files. Read a
+  pull request's diff before you run its branch ([Safety](#safety)).
 - On Windows, a `scripts:test` row that skips one test more than it declares can come from the temporary
   directory's volume. The case for a program reached through an 8.3 short name skips where the volume keeps no
   short names. Point `TEMP` at a volume that keeps them.
