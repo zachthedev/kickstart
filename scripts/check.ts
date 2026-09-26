@@ -51,8 +51,6 @@ import {
   compilerFinding,
   files,
   ignoreCommentFindings,
-  inheritedCallFindings,
-  inheritedCalls,
   taploFound,
   testCount,
   unreadSourceFinding,
@@ -592,85 +590,7 @@ async function workflows(quick: boolean): Promise<string> {
       `zizmor completed ${files(completed.size)}, and these tracked workflows were not among them: ${unaudited.map((path) => quote(path)).join(', ') || 'none'}`,
     );
   }
-  const held = await inheritedCallsHeld(await binary('zizmor'));
-  return `${files(workflowFiles.length)}, zizmor ${online ? 'online' : 'offline'} over ${files(completed.size)}, ${String(held)} secrets-inherit ${held === 1 ? 'call' : 'calls'} held`;
-}
-
-/** What a job that passes `secrets: inherit` may call: a reusable workflow of zachthedev/.github. */
-const INHERIT_CALLEE = 'zachthedev/.github/.github/workflows/';
-
-/**
- * The files the committed zizmor.yml's `secrets-inherit` rule waives, or none
- * when it names no such rule.
- *
- * @throws When the config does not parse, or the list holds anything but strings
- */
-async function inheritWaivers(): Promise<string[]> {
-  let parsed: unknown;
-  try {
-    parsed = Bun.YAML.parse(await Bun.file(ZIZMOR_CONFIG).text());
-  } catch (error: unknown) {
-    throw new Error(
-      `${ZIZMOR_CONFIG} does not parse as the gate reads YAML, so its secrets-inherit waivers are unknown: ${quote(error instanceof Error ? error.message : String(error))}`,
-      { cause: error },
-    );
-  }
-  const ignore = (parsed as { rules?: { 'secrets-inherit'?: { ignore?: unknown } } } | null)?.rules?.['secrets-inherit']
-    ?.ignore;
-  if (ignore === undefined) {
-    return [];
-  }
-  if (!Array.isArray(ignore) || !ignore.every((entry) => typeof entry === 'string')) {
-    throw new Error(`${ZIZMOR_CONFIG} rules.secrets-inherit.ignore is not a list of file names`);
-  }
-  return ignore;
-}
-
-/**
- * How many jobs pass `secrets: inherit`, each held to {@link INHERIT_CALLEE},
- * with a call in every file the committed zizmor.yml waives.
- *
- * @remarks
- * zizmor runs with no config and with inline ignore comments off, so it
- * reports every such job, waived or not. ZIZMOR_CONFIG would name a config
- * against --no-config, so it is removed. zizmor exits 10 to 14 when it reports
- * findings.
- *
- * @throws When zizmor fails, a job calls anything else, or a waived file holds no call
- */
-async function inheritedCallsHeld(zizmor: string): Promise<number> {
-  const finished = await run(
-    [
-      zizmor,
-      '--no-progress',
-      '--offline',
-      '--no-config',
-      '--no-ignores',
-      '--strict-collection',
-      '--format',
-      'json',
-      '--collect=all',
-      '.github',
-    ],
-    { ZIZMOR_CONFIG: undefined },
-  );
-  if (finished.exitCode !== 0 && (finished.exitCode < 10 || finished.exitCode > 14)) {
-    throw new Error(`zizmor with no config ${describe(finished)}`);
-  }
-  let calls: ReturnType<typeof inheritedCalls>;
-  try {
-    calls = inheritedCalls(finished.stdout);
-  } catch (error: unknown) {
-    throw new Error(
-      `zizmor with no config: ${error instanceof Error ? error.message : String(error)}. It ${describe(finished)}`,
-      { cause: error },
-    );
-  }
-  const refused = inheritedCallFindings(calls, [INHERIT_CALLEE], await inheritWaivers());
-  if (refused.length > 0) {
-    throw new Error(refused.join('\n'));
-  }
-  return calls.length;
+  return `${files(workflowFiles.length)}, zizmor ${online ? 'online' : 'offline'} over ${files(completed.size)}`;
 }
 
 /* ///// markers ///// */
@@ -748,7 +668,7 @@ const rows: readonly Row[] = [
   {
     name: 'workflows',
     checks:
-      'actionlint over every tracked workflow with ShellCheck behind a stand-in that refuses its directives, both proven by a canary, then zizmor over .github with nothing ignored and each workflow proven audited, online in check when gh has a token and offline otherwise, then every job passing secrets: inherit held to a reusable workflow of zachthedev/.github',
+      'actionlint over every tracked workflow with ShellCheck behind a stand-in that refuses its directives, both proven by a canary, then zizmor over .github with nothing ignored and each workflow proven audited, online in check when gh has a token and offline otherwise',
     check: workflows,
   },
   {

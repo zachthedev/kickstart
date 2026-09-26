@@ -233,10 +233,7 @@ The `format` row also refuses a Prettier ignore comment in any file it checks, s
 one unformatted and asks no reason. It matches the shape Prettier honors, a comment opener (`//`, `/*`, `#`,
 `<!--`, `{{!` or `{{!--`) then spacing then the keyword, so a document can name the keyword in prose or in
 backticks. The `toml` row checks that taplo reports each file it was handed, and the `workflows` row that
-actionlint and zizmor each report every tracked workflow. The `workflows` row then runs zizmor again with no config
-and inline ignores off, so it sees every job that passes `secrets: inherit`, waived or not. Each such job calls a
-reusable workflow of `zachthedev/.github`, and a job calling anything else fails the row. Each file the
-`secrets-inherit` waiver names must hold such a job, so a waiver left behind fails the row too.
+actionlint and zizmor each report every tracked workflow.
 
 actionlint runs ShellCheck through `scripts/shellcheck.ts`, which it hands each workflow script exactly as
 ShellCheck reads it: YAML escapes and folding decoded, and every `${{ }}` expression blanked. The stand-in refuses
@@ -305,6 +302,8 @@ the job that runs the gate. The shared jobs refuse:
 - `paths` or `baseUrl` in a tracked `tsconfig.json` or `jsconfig.json` or in a file its `extends` chain reads;
 - a `zizmor: ignore[...]` comment in a tracked file under `.github`, since a waiver is an entry in
   `.github/zizmor.yml`;
+- a job passing `secrets: inherit` to anything but a reusable workflow of `zachthedev/.github`, and a
+  `secrets-inherit` waiver that names a position or a file holding no such job, so no waiver outlives its job;
 - a root file named like a program the gate, its hooks or an install start (`bun`, `bunx`, `gh`, `git`, `mise` or
   `node`), and a root entry named `'`, which actionlint would read in place of the ShellCheck stand-in.
 

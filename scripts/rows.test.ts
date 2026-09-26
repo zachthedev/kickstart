@@ -4,9 +4,6 @@ import {
   comparable,
   compilerFinding,
   ignoreCommentFindings,
-  type InheritedCall,
-  inheritedCallFindings,
-  inheritedCalls,
   taploFound,
   testCount,
   unreadSourceFinding,
@@ -309,106 +306,4 @@ test.each([
   `//! ${IGNORE}`,
 ])('%p names no comment Prettier honors and yields nothing', (text: string) => {
   expect(ignoreCommentFindings('docs/a.md', `${text}\n`)).toEqual([]);
-});
-
-/* ///// secrets: inherit ///// */
-
-/** One finding in the shape zizmor 1.30 prints with --format json. */
-function finding(ident: string, path: string, row: number, feature: string): unknown {
-  return {
-    ident,
-    locations: [
-      { symbolic: { kind: 'Related' }, concrete: { feature: 'secrets: inherit' } },
-      {
-        symbolic: { kind: 'Primary', key: { Local: { verbatim_path: path } } },
-        concrete: { feature, location: { start_point: { row } } },
-      },
-    ],
-  };
-}
-
-test('each secrets-inherit finding becomes its file, one-based line and unquoted callee, and other audits are skipped', () => {
-  const report = [
-    finding(
-      'secrets-inherit',
-      '.github\\workflows\\cd.yml',
-      35,
-      '"zachthedev/.github/.github/workflows/publish.yml@abc"',
-    ),
-    finding('unpinned-uses', '.github/workflows/ci.yml', 3, 'actions/checkout@v4'),
-    finding('secrets-inherit', '.github/workflows/deps.yml', 32, "'zachthedev/.github/.github/workflows/deps.yml@abc'"),
-  ];
-
-  const calls = [
-    { path: '.github/workflows/cd.yml', line: 36, callee: 'zachthedev/.github/.github/workflows/publish.yml@abc' },
-    { path: '.github/workflows/deps.yml', line: 33, callee: 'zachthedev/.github/.github/workflows/deps.yml@abc' },
-  ];
-  expect(inheritedCalls(JSON.stringify(report))).toEqual(calls);
-  expect(inheritedCalls(colored(JSON.stringify(report, null, 2).replaceAll('\n', '\r\n')))).toEqual(calls);
-});
-
-test.each(['', 'error: no input', '[{"ident": "secrets-inherit"'])(
-  'zizmor printing %p throws, naming no json',
-  (printed: string) => {
-    expect(() => inheritedCalls(printed)).toThrow('zizmor printed no json');
-  },
-);
-
-test.each([
-  ['a report that is not a list', { findings: [] }, 'not a list of findings'],
-  ['a finding with no primary location', [{ ident: 'secrets-inherit', locations: [] }], 'no primary file'],
-  [
-    'a finding with no callee',
-    [
-      {
-        ident: 'secrets-inherit',
-        locations: [{ symbolic: { kind: 'Primary', key: { Local: { verbatim_path: 'x' } } } }],
-      },
-    ],
-    'no primary file',
-  ],
-  ['a null finding location', [{ ident: 'secrets-inherit', locations: [null] }], 'no primary file'],
-])('%s throws', (_label: string, report: unknown, refused: string) => {
-  expect(() => inheritedCalls(JSON.stringify(report))).toThrow(refused);
-});
-
-const HELD = ['zachthedev/.github/.github/workflows/'];
-
-/** A call from `path` to `callee`, at line 10. */
-function call(path: string, callee: string): InheritedCall {
-  return { path, line: 10, callee };
-}
-
-test('calls to reusable workflows of zachthedev/.github, in any case, from every waived file yield nothing', () => {
-  const calls = [
-    call('.github/workflows/cd.yml', 'zachthedev/.github/.github/workflows/publish.yml@abc'),
-    call('.github/workflows/deps.yml', 'ZachTheDev/.GitHub/.github/workflows/deps.yml@abc'),
-  ];
-
-  expect(inheritedCallFindings(calls, HELD, ['cd.yml', 'deps.yml'])).toEqual([]);
-});
-
-test.each([
-  'someone/.github/.github/workflows/publish.yml@abc',
-  'zachthedev/.github-fork/.github/workflows/publish.yml@abc',
-  'zachthedev/other/.github/workflows/publish.yml@abc',
-  './.github/workflows/local.yml',
-  'zachthedev/.github/.github/workflowsx/publish.yml@abc',
-])('a call to %p is refused, naming the file, line and callee', (callee: string) => {
-  expect(inheritedCallFindings([call('.github/workflows/cd.yml', callee)], HELD, ['cd.yml'])).toEqual([
-    carrying(`".github/workflows/cd.yml" line 10 passes secrets: inherit to ${JSON.stringify(callee)}`),
-  ]);
-});
-
-test('a waived file holding no call is refused as stale, in the file form and the line form', () => {
-  const calls = [call('.github/workflows/cd.yml', 'zachthedev/.github/.github/workflows/publish.yml@abc')];
-
-  expect(inheritedCallFindings(calls, HELD, ['cd.yml', 'deps.yml', 'ci.yml:3:5'])).toEqual([
-    carrying('the secrets-inherit waiver names "deps.yml", and zizmor reported no job there'),
-    carrying('the secrets-inherit waiver names "ci.yml:3:5", and zizmor reported no job there'),
-  ]);
-});
-
-test('no calls and no waivers yield nothing', () => {
-  expect(inheritedCallFindings([], HELD, [])).toEqual([]);
 });
