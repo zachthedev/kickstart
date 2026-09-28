@@ -272,27 +272,39 @@ function workflowFindings(path: string, segments: readonly string[]): string[] {
 /** The one directory a composite action lives under, in this exact spelling. */
 const ACTIONS = '.github/actions/';
 
-/** The names a composite action's metadata file takes, compared folded. */
+/** The names a composite action's metadata file takes, in this exact spelling. */
 const ACTION_NAMES: readonly string[] = ['action.yml', 'action.yaml'];
 
 /**
  * A finding when the tracked file at `path` is a composite action's metadata
- * file outside {@link ACTIONS}, or none.
+ * file outside {@link ACTIONS}, or one named in another case, or none.
  *
  * @remarks
  * zizmor, in the workflows row and in the shared workflows job, reads
  * `.github` alone, while `uses: ./<path>` runs an action from anywhere in the
  * checkout. An action at any other path, such as `tools/x` or a `.GitHub`
  * spelled in another case, would run with no audit, so every one lives under
- * `.github/actions/` in that spelling.
+ * `.github/actions/` in that spelling. A name is compared folded, and only its
+ * exact spelling passes: zizmor reads `action.yml` and `action.yaml` alone,
+ * while a case-insensitive runner opens `ACTION.YML` for either.
  */
 function actionFindings(path: string, segments: readonly string[]): string[] {
-  if (!ACTION_NAMES.includes(segments.at(-1) ?? '') || path.startsWith(ACTIONS)) {
+  const name = segments.at(-1) ?? '';
+  if (!ACTION_NAMES.includes(name)) {
     return [];
   }
-  return [
-    `${quote(path)} is a composite action outside ${ACTIONS}, where zizmor reads none, while uses: ./<path> runs one from anywhere in the checkout. Move it under ${ACTIONS}`,
-  ];
+  if (!path.startsWith(ACTIONS)) {
+    return [
+      `${quote(path)} is a composite action outside ${ACTIONS}, where zizmor reads none, while uses: ./<path> runs one from anywhere in the checkout. Move it under ${ACTIONS}`,
+    ];
+  }
+  const spelled = path.split('/').at(-1) ?? '';
+  if (!ACTION_NAMES.includes(spelled)) {
+    return [
+      `${quote(path)} names a composite action in another case than ${ACTION_NAMES.join(' or ')}, which zizmor never reads, while a case-insensitive runner opens it for uses:. Rename it ${name}`,
+    ];
+  }
+  return [];
 }
 
 /** The paths one `git ls-files` call lists, split, or a finding when git fails. */

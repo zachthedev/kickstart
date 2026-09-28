@@ -907,7 +907,19 @@ test.each([
   ],
   ['an action at the root', ['action.yml'], [outsideActions('action.yml')]],
   ['an action.yaml in another case', ['ci/Action.YAML'], [outsideActions('ci/Action.YAML')]],
-  ['an action under .github/actions', ['.github/actions/x/action.yml', '.github/actions/y/action.yaml'], []],
+  [
+    'an action under .github/actions named in another case',
+    ['.github/actions/x/ACTION.YML', '.github/actions/y/Action.yaml'],
+    [
+      `${JSON.stringify('.github/actions/x/ACTION.YML')} names a composite action in another case than action.yml or action.yaml, which zizmor never reads, while a case-insensitive runner opens it for uses:. Rename it action.yml`,
+      `${JSON.stringify('.github/actions/y/Action.yaml')} names a composite action in another case than action.yml or action.yaml, which zizmor never reads, while a case-insensitive runner opens it for uses:. Rename it action.yaml`,
+    ],
+  ],
+  [
+    'an action under .github/actions, nested or not',
+    ['.github/actions/x/action.yml', '.github/actions/y/action.yaml', '.github/actions/deep/sub/action.yml'],
+    [],
+  ],
   ['a file named otherwise outside .github/actions', ['tools/x/actions.yml', 'tools/x/other.yml'], []],
   ['an untracked action on disk', [], []],
 ])('%s', async (_label: string, tracked: readonly string[], refused: readonly string[]) => {
