@@ -243,14 +243,15 @@ tracked files it formats, and that call resolves no config at all, so no `packag
 plugin into the gate. The gate holds no config's text: `CODEOWNERS` names the owner for every path, and the
 default-branch ruleset requires a code owner's review, so a change to a config is read before it merges.
 
-Every row that walks the tree says how many files it checked, and fails when that is none. The `typecheck` row
-also fails on a tracked TypeScript file that no project reads. The `format`, `toml` and `workflows` rows hand their
-tool the tracked files, so a new file counts once `git add` names it, and `.gitignore` never hides a tracked one.
-The `format` row also refuses a Prettier ignore comment in any file it checks, since Prettier leaves the code after
-one unformatted and asks no reason. It matches the shape Prettier honors, a comment opener (`//`, `/*`, `#`,
-`<!--`, `{{!` or `{{!--`) then spacing then the keyword, so a document can name the keyword in prose or in
-backticks. The `toml` row checks that taplo reports each file it was handed, and the `workflows` row that
-actionlint and zizmor each report every tracked workflow.
+Every row that walks the tree says how many files it checked, and fails when that is none. The `typecheck` row also
+fails on a tracked TypeScript file that no project reads, and the `lint` row on a tracked JavaScript or TypeScript
+file that ESLint did not lint. The `format`, `toml` and `workflows` rows hand their tool the tracked files, so a new
+file counts once `git add` names it, and `.gitignore` never hides a tracked one. The `format` row also refuses a
+Prettier ignore comment in any file it checks, since Prettier leaves the code after one unformatted and asks no
+reason. It matches the shape Prettier honors, a comment opener (`//`, `/*`, `#`, `<!--`, `{{!` or `{{!--`) then
+spacing then the keyword, so a document can name the keyword in prose or in backticks. The `toml` row checks that
+taplo reports each file it was handed, and the `workflows` row that actionlint and zizmor each report every tracked
+workflow.
 
 actionlint runs ShellCheck through `scripts/shellcheck.ts`, which it hands each workflow script exactly as
 ShellCheck reads it: YAML escapes and folding decoded, and every `${{ }}` expression blanked. The stand-in refuses
@@ -265,8 +266,12 @@ outside `bash`, `sh` and `pwsh`, on a step or under `defaults.run`.
 The `lint` row runs ESLint twice over the tree. The first pass reads every comment and allows no warning. It also
 refuses a report of `gate/visible-reason` that a directive turned off: a directive naming the rule hides the rule's
 report on that directive, and ESLint lists such a report apart from the problems and counts it in no exit code. The
-second pass runs with `--no-inline-config`, which reads no comment as a directive or as configuration, over the
-same files. It refuses every report there from a rule that reads comments: `gate/visible-reason`,
+row then fails on a tracked file ending in `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.mts` or `.cts`, in any
+case, that the first pass did not lint. Bun runs each of those as a module, and ESLint passes over a file without a
+word where an ignore covers it or no `files` pattern matches it. So a file tracked under an ignored directory such
+as `dist/`, a `.jsx`, or a `.TS` fails the row, and the ignores keep untracked output out of the lint alone. The
+second pass runs with `--no-inline-config`, which reads no comment as a directive or as configuration, over the same
+files. It refuses every report there from a rule that reads comments: `gate/visible-reason`,
 `@typescript-eslint/ban-ts-comment` and every eslint-comments rule. So a comment that turns one of those rules off,
 `no-use` included, fails the row. The second pass reports each rule a waiver turns off, and the row passes those.
 
@@ -339,11 +344,11 @@ the job that runs the gate. The shared jobs refuse:
 - a root file named like a program the gate, its hooks or an install start (`bun`, `bunx`, `gh`, `git`, `mise` or
   `node`), and a root entry named `'`, which actionlint would read in place of the ShellCheck stand-in.
 
-Review refuses what no row checks, since each such file sits in the diff and runs no code: anything under `dist/`,
-`coverage/`, `.claude/worktrees/` or a `.git`, `.sl`, `.svn`, `.hg` or `.jj` directory, a JavaScript or declaration
-file beyond `commitlint.config.js`, a path below a personal file's name, and a tracked
-`.claude/settings.local.json`. Review also refuses a tracked `.npmrc`: a registry it names fails every package's
-integrity check against `bun.lock`.
+Review refuses what no row checks, since each such file sits in the diff and runs no code: any file under `dist/`,
+`coverage/` or `.claude/worktrees/` but a JavaScript or TypeScript one, which the `lint` row refuses, anything under
+a `.git`, `.sl`, `.svn`, `.hg` or `.jj` directory, a JavaScript or declaration file beyond `commitlint.config.js`, a
+path below a personal file's name, and a tracked `.claude/settings.local.json`. Review also refuses a tracked
+`.npmrc`: a registry it names fails every package's integrity check against `bun.lock`.
 
 The `tools` row reads `mise.toml` and `mise.lock` against the expectations in `scripts/tools.ts`, and installs
 from the lockfile only after that read passes. `mise.toml` holds `[tools]`, `[tool_config]` and `[settings]`

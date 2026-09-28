@@ -14,6 +14,7 @@ import {
   lintedWithoutComments,
   taploFound,
   testCount,
+  unlintedSourceFinding,
   unreadSourceFinding,
   zizmorCompleted,
 } from './rows';
@@ -267,6 +268,58 @@ test.each(['x.ts', 'x.mts', 'x.cts', 'x.tsx', 'x.d.ts', 'X.TS'])('%p counts as a
 
 test('every tracked TypeScript file read yields nothing', () => {
   expect(unreadSourceFinding(['src/a.ts', 'docs/b.md'], new Set([comparable('src/a.ts')]))).toBeUndefined();
+});
+
+/* ///// Lint coverage ///// */
+
+test('a tracked file ESLint did not lint is named with why and what to do, and one it linted is not', () => {
+  const linted = new Set([comparable('src/a.ts')]);
+
+  expect(unlintedSourceFinding(['src/a.ts', 'dist/b.ts', 'README.md'], linted)).toBe(
+    'eslint lints no "dist/b.ts", so no lint rule reads it. Match each with a files pattern in eslint.config.ts and no ignore, or stop tracking it',
+  );
+});
+
+test('several files ESLint did not lint are named together', () => {
+  expect(unlintedSourceFinding(['coverage/x.js', 'src/c.jsx', 'src/a.ts'], new Set([comparable('src/a.ts')]))).toEqual(
+    carrying('eslint lints no "coverage/x.js", "src/c.jsx", so no lint rule reads them.'),
+  );
+});
+
+// Every extension Bun runs as a module, in any case, since Bun reads one in any
+// case and a files pattern matches one case alone.
+test.each([
+  'x.js',
+  'x.jsx',
+  'x.mjs',
+  'x.cjs',
+  'x.ts',
+  'x.tsx',
+  'x.mts',
+  'x.cts',
+  'x.d.ts',
+  'x.d.mts',
+  'X.TS',
+  'x.Jsx',
+  '.wrangler/probe.ts',
+])('%p counts as a source ESLint lints', (path: string) => {
+  expect(unlintedSourceFinding([path], new Set())).toEqual(carrying(`eslint lints no ${JSON.stringify(path)}`));
+});
+
+test.each(['x.json', 'x.md', 'x.mjsx', 'x.ts.txt', 'x.tsxx', 'ts', 'src/jsx', 'x.yml'])(
+  '%p names no source ESLint lints and yields nothing',
+  (path: string) => {
+    expect(unlintedSourceFinding([path], new Set())).toBeUndefined();
+  },
+);
+
+test('every tracked source linted yields nothing', () => {
+  expect(
+    unlintedSourceFinding(
+      ['src/a.ts', 'commitlint.config.js', 'docs/b.md'],
+      new Set(['src/a.ts', 'commitlint.config.js'].map((path) => comparable(path))),
+    ),
+  ).toBeUndefined();
 });
 
 /* ///// The compiler the typecheck row runs ///// */

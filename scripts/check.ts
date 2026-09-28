@@ -56,6 +56,7 @@ import {
   lintedWithoutComments,
   taploFound,
   testCount,
+  unlintedSourceFinding,
   unreadSourceFinding,
   zizmorCompleted,
 } from './rows';
@@ -320,14 +321,22 @@ function isAbsolutePath(line: string): boolean {
 
 // Two passes, each with the json formatter, which names every file ESLint
 // linted, so the row counts them and prints each problem itself. The first
-// reads every comment and allows no warning. The second reads no comment as a
-// directive or as configuration, and the row refuses every report there from a
-// rule that reads comments, over the same files. rows.ts holds what the row
-// concludes from each. --config names the one config, so ESLint runs no
+// reads every comment and allows no warning, and the row fails on a tracked
+// JavaScript or TypeScript file it did not lint. The second reads no comment
+// as a directive or as configuration, and the row refuses every report there
+// from a rule that reads comments, over the same files. rows.ts holds what the
+// row concludes from each. --config names the one config, so ESLint runs no
 // eslint.config.* nearer a file than the root.
 async function lint(): Promise<string> {
   const eslint = [...jsTool('eslint'), '--config', ESLINT_CONFIG];
   const first = lintedAsWritten(await run([...eslint, '.', '--max-warnings=0', '--format', 'json']));
+  const unlinted = unlintedSourceFinding(
+    await trackedFiles(),
+    new Set(first.map((result) => comparable(result.filePath))),
+  );
+  if (unlinted !== undefined) {
+    throw new Error(unlinted);
+  }
   return lintedWithoutComments(await run([...eslint, '--no-inline-config', '.', '--format', 'json']), first);
 }
 
@@ -644,7 +653,7 @@ const rows: readonly Row[] = [
   {
     name: 'lint',
     checks:
-      'eslint over the tree with eslint.config.ts alone and no warnings allowed, counting the files it linted, and no gate/visible-reason report a directive turned off, then eslint again over the same files with --no-inline-config and no report from a rule that reads comments',
+      'eslint over the tree with eslint.config.ts alone and no warnings allowed, counting the files it linted, every tracked JavaScript or TypeScript file among them, and no gate/visible-reason report a directive turned off, then eslint again over the same files with --no-inline-config and no report from a rule that reads comments',
     check: lint,
     runsCode: true,
   },
