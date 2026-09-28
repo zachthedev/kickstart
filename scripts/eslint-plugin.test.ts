@@ -185,8 +185,14 @@ test.each([
 /** The repository's own config, loaded once for the cases that lint text under it. */
 const repository = new ESLint({ cwd: ROOT, overrideConfigFile: join(ROOT, 'eslint.config.ts') });
 
+// The files the repository's config lints each case's text as, a test file and a file that is not one.
+// typescript-eslint's project service looks a path up in the tsconfig.json projects on disk, so each is a
+// shared file every Bun repository tracks, whatever else the repository holds.
+const TEST_FILE = join('scripts', 'eslint-plugin.test.ts');
+const OTHER_FILE = join('scripts', 'eslint-plugin.ts');
+
 /** Every problem the repository's config reports over `text` as the file at `path`, as its line and rule, sorted. */
-async function repositoryProblems(text: string, path = join('tests', 'example.test.ts')): Promise<string[]> {
+async function repositoryProblems(text: string, path = TEST_FILE): Promise<string[]> {
   const [result] = await repository.lintText(text, { filePath: join(ROOT, path) });
   return (result?.messages ?? [{ line: 0, ruleId: 'no result' }])
     .map((message) => `${String(message.line)} ${message.ruleId ?? 'no rule'}`)
@@ -257,7 +263,7 @@ test('eslint.config.ts leaves a plain test and a skipped one to the test row', a
   ).toEqual([]);
 });
 
-test.each([join('tests', 'example.test.ts'), join('src', 'example.ts')])(
+test.each([TEST_FILE, OTHER_FILE])(
   'a dynamic import with options is refused in %s, test file or not',
   async (path: string) => {
     expect(
@@ -273,7 +279,7 @@ test('a field named failing outside a test file passes, read or destructured', a
   expect(
     await repositoryProblems(
       'export interface Health {\n  readonly failing: boolean;\n}\n\nexport function down(health: Health): boolean {\n  const { failing } = health;\n  return failing || health.failing;\n}\n',
-      join('src', 'example.ts'),
+      OTHER_FILE,
     ),
   ).toEqual([]);
 });
