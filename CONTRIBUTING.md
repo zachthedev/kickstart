@@ -492,8 +492,9 @@ workflow in the publisher's repository signed over the artifact's digest. The pu
 key the checking tool carries. The registry's record is a hash, or a signature, from a registry that never replaces
 a published version. The release's own checksum is GitHub's digest for the asset, or a checksum file beside it, in
 a release that can still change. A hash this repository computed comes from one download, and nothing outside the
-lockfile records it. A version alone names a release, and nothing recorded before the install vouches for its
-bytes. Setup names the programs you install yourself, and none of them takes a tier.
+file that pins it records it. A version alone names a release, and nothing recorded before the install vouches for
+its bytes. Setup names the programs you install yourself, and the copy you install takes no tier. A program in
+Setup that CI installs at a pinned version takes a line for that copy.
 
 - actionlint and zizmor: the publisher's build attestation, held in `mise.lock`. mise checks the attestation on
   every install, and the gate refuses a lockfile that drops the line.
