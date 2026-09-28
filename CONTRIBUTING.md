@@ -181,8 +181,8 @@ writes to passed in.
 
 The gate's own tests under `scripts/` start a stand-in, itself a Bun process, in place of every program the gate
 starts, and their `PATH` holds the stand-ins alone. So no case starts your gh, git or mise or reaches the network.
-The suite covers `scripts/rows.ts`, which holds what the rows conclude from their tools' output. What
-`scripts/check.ts` itself wires together is proven by a break round.
+The suite covers `scripts/rows.ts`, which holds what the rows conclude from their tools' output, and how
+`scripts/check.ts` reads its arguments. What `scripts/check.ts` itself wires together is proven by a break round.
 
 ## The gate
 
@@ -196,7 +196,8 @@ is a row in `scripts/check.ts`, never a step in a workflow. When a local run fai
 
 `bun run check:quick` is the same gate without its slow rows, and the push hook runs it. `bun run check:rows` lists
 the rows and marks the slow ones. `bun run check <row>` runs the rows it names, one or several, resolving the pinned
-binaries without installing them.
+binaries without installing them. A name no row carries, or a flag `FLAGS` in `scripts/check.ts` does not name,
+refuses the run before anything starts.
 
 CI and the push hook run the gate by its file, `bun --no-env-file scripts/check.ts`, so no `node_modules/.bin` sits
 ahead of `PATH`. The `check`, `check:quick` and `check:rows` scripts pass `--no-env-file` too, and so does every

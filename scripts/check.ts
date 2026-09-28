@@ -682,8 +682,72 @@ const glyph = (ok: boolean): string => (color ? styleText(ok ? 'green' : 'red', 
 const width = Math.max(...rows.map((row) => row.name.length));
 const seconds = (started: number): string => `${((performance.now() - started) / 1000).toFixed(1)}s`;
 
-async function main(): Promise<number> {
-  if (process.argv.includes('--rows')) {
+/** The flags the gate takes. Any other argument that starts with `--` is refused. */
+const FLAGS: readonly string[] = ['--quick', '--rows'];
+
+/** What a run's arguments ask for. */
+export interface Selection {
+  /** The rows to run, in the table's order. */
+  readonly rows: readonly Row[];
+  /** `--quick`: an unnamed run leaves the slow rows out, and the workflows row runs zizmor offline. */
+  readonly quick: boolean;
+  /** `--rows`: print the rows and run nothing. */
+  readonly list: boolean;
+}
+
+/**
+ * What a run's arguments ask for, or the refusal it prints when an argument
+ * is neither a row's name nor a flag the gate takes.
+ *
+ * @remarks
+ * Every argument is read here and nowhere else. Named rows run in the table's
+ * order, slow or not. With no name, `--quick` leaves the slow rows out. One
+ * unknown name or flag refuses the whole run, so a mistyped name never selects
+ * nothing and reads as a green gate, and a mistyped flag never runs the whole
+ * gate in place of what it asked for.
+ *
+ * @param args - The arguments after the script's path
+ */
+export function selectRows(args: readonly string[]): Selection | { readonly refusal: string } {
+  const flags = args.filter((argument) => argument.startsWith('--'));
+  const names = args.filter((argument) => !argument.startsWith('--'));
+  const unknownFlags = flags.filter((flag) => !FLAGS.includes(flag));
+  const unknownNames = names.filter((name) => !rows.some((row) => row.name === name));
+  const refusals = [
+    ...(unknownFlags.length > 0
+      ? [
+          `no such flag: ${printable(unknownFlags.map((flag) => quote(flag)).join(', '))}. The gate takes ${FLAGS.join(' and ')}.`,
+        ]
+      : []),
+    ...(unknownNames.length > 0
+      ? [
+          `no such row: ${printable(unknownNames.map((name) => quote(name)).join(', '))}. bun run check:rows lists them.`,
+        ]
+      : []),
+  ];
+  if (refusals.length > 0) {
+    return { refusal: refusals.join(' ') };
+  }
+  const quick = flags.includes('--quick');
+  return {
+    rows: rows.filter((row) => (names.length > 0 ? names.includes(row.name) : !quick || row.slow !== true)),
+    quick,
+    list: flags.includes('--rows'),
+  };
+}
+
+/**
+ * Runs the gate over `args` and returns the process's exit code.
+ *
+ * @param args - The arguments after the script's path
+ */
+async function main(args: readonly string[]): Promise<number> {
+  const selection = selectRows(args);
+  if ('refusal' in selection) {
+    console.error(selection.refusal);
+    return 1;
+  }
+  if (selection.list) {
     console.log(dim('rows'));
     console.log();
     for (const row of rows) {
@@ -692,19 +756,8 @@ async function main(): Promise<number> {
     return 0;
   }
 
-  const quick = process.argv.includes('--quick');
-  const requested = process.argv.slice(2).filter((argument) => !argument.startsWith('--'));
-  const unknown = requested.filter((name) => !rows.some((row) => row.name === name));
-  if (unknown.length > 0) {
-    console.error(
-      `no such row: ${printable(unknown.map((name) => quote(name)).join(', '))}. bun run check:rows lists them.`,
-    );
-    return 1;
-  }
-  const selected = rows.filter((row) =>
-    requested.length > 0 ? requested.includes(row.name) : !quick || row.slow !== true,
-  );
-
+  const { quick } = selection;
+  const selected = selection.rows;
   console.log(dim(quick ? 'check:quick' : 'check'));
   console.log();
 
@@ -757,4 +810,8 @@ async function main(): Promise<number> {
   return 1;
 }
 
-process.exitCode = await main();
+// Run as a file, the gate runs. Imported, as scripts/check.test.ts does, it
+// runs nothing.
+if (import.meta.main) {
+  process.exitCode = await main(process.argv.slice(2));
+}
