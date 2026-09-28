@@ -352,7 +352,10 @@ Review refuses what no row checks, since each such file sits in the diff and run
 `coverage/` or `.claude/worktrees/` but a JavaScript or TypeScript one, which the `lint` row refuses, anything under
 a `.git`, `.sl`, `.svn`, `.hg` or `.jj` directory, a JavaScript or declaration file beyond `commitlint.config.js`, a
 path below a personal file's name, and a tracked `.claude/settings.local.json`. Review also refuses a tracked
-`.npmrc`: a registry it names fails every package's integrity check against `bun.lock`.
+`.npmrc`: a registry it names fails every package's integrity check against `bun.lock`. The coverage checks in the
+`typecheck` and `lint` rows find a file by its extension. Bun also runs a file with no extension as TypeScript,
+started or imported, and a `.es6` file it starts directly. Review alone reads such a tracked file, since neither
+check names it.
 
 The `tools` row reads `mise.toml` and `mise.lock` against the expectations in `scripts/tools.ts`, and installs
 from the lockfile only after that read passes. `mise.toml` holds `[tools]`, `[tool_config]` and `[settings]`
