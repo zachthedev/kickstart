@@ -22,7 +22,7 @@ Read these before changing anything, in order. They bind an agent as they bind a
 - `bun run check` is the gate.
 - `bun run check:quick` is the gate without its slow rows, which is what the push hook runs.
 - `bun run check:rows` lists the rows.
-- `bun run check <row>` runs one row.
+- `bun run check <row> [<row> ...]` runs the named rows alone.
 
 [CONTRIBUTING.md#the-gate](CONTRIBUTING.md#the-gate) says what the rows cover.
 

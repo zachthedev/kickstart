@@ -182,12 +182,116 @@ test.each([
   expect(await problems(text)).toEqual({ found: [], messages: [] });
 });
 
+/** The repository's own config, loaded once for the cases that lint text under it. */
+const repository = new ESLint({ cwd: ROOT, overrideConfigFile: join(ROOT, 'eslint.config.ts') });
+
+/** Every problem the repository's config reports over `text` as the file at `path`, as its line and rule, sorted. */
+async function repositoryProblems(text: string, path = join('tests', 'example.test.ts')): Promise<string[]> {
+  const [result] = await repository.lintText(text, { filePath: join(ROOT, path) });
+  return (result?.messages ?? [{ line: 0, ruleId: 'no result' }])
+    .map((message) => `${String(message.line)} ${message.ruleId ?? 'no rule'}`)
+    .sort();
+}
+
+/** A test file importing `name` from bun:test, then `body` from its third line. */
+const testFile = (name: string, body: string): string => `import { ${name} } from 'bun:test';\n\n${body}\n`;
+
+test.each([
+  ['test.failing', testFile('test', "test.failing('inverted', () => undefined);"), ['3 no-restricted-syntax']],
+  ['it.failing', testFile('it', "it.failing('inverted', () => undefined);"), ['3 no-restricted-syntax']],
+  [
+    'test.failingIf',
+    testFile('test', "test.failingIf(true)('inverted', () => undefined);"),
+    ['3 no-restricted-syntax'],
+  ],
+  [
+    'a failing case down a chain',
+    testFile('test', "test.concurrent.failing('inverted', () => undefined);"),
+    ['3 no-restricted-syntax'],
+  ],
+  [
+    'describe.failing, though bun-types declares none',
+    testFile('describe', "describe.failing('inverted', () => undefined);"),
+    ['3 @typescript-eslint/no-unsafe-call', '3 no-restricted-syntax'],
+  ],
+  [
+    'failing destructured from test',
+    testFile('test', "const { failing } = test;\nfailing('inverted', () => undefined);"),
+    ['3 no-restricted-syntax', '3 no-restricted-syntax'],
+  ],
+  [
+    'failingIf destructured under another name',
+    testFile('test', "const { failingIf: inverted } = test;\ninverted(true)('inverted', () => undefined);"),
+    ['3 @typescript-eslint/unbound-method', '3 no-restricted-syntax', '3 no-restricted-syntax'],
+  ],
+  [
+    'test taken apart by a computed key',
+    testFile(
+      'test',
+      "const key = 'failing';\nconst { [key]: inverted } = test;\ninverted('inverted', () => undefined);",
+    ),
+    ['4 no-restricted-syntax'],
+  ],
+  [
+    'a computed member of test',
+    testFile('test', "const key = 'failing';\ntest[key]('inverted', () => undefined);"),
+    ['4 no-restricted-syntax'],
+  ],
+  [
+    'a computed member one step down the chain',
+    testFile('test', "const key = 'failing';\ntest.concurrent[key]('inverted', () => undefined);"),
+    ['4 no-restricted-syntax'],
+  ],
+])(
+  'eslint.config.ts refuses %s in a test file, since bun test counts a failing case as a pass',
+  async (_label: string, text: string, problems: readonly string[]) => {
+    expect(await repositoryProblems(text)).toEqual([...problems].sort());
+  },
+);
+
+test('eslint.config.ts leaves a plain test and a skipped one to the test row', async () => {
+  expect(
+    await repositoryProblems(
+      testFile('test', "test('plain', () => undefined);\ntest.skip('skipped', () => undefined);"),
+    ),
+  ).toEqual([]);
+});
+
+test.each([join('tests', 'example.test.ts'), join('src', 'example.ts')])(
+  'a dynamic import with options is refused in %s, test file or not',
+  async (path: string) => {
+    expect(
+      await repositoryProblems(
+        "export const loaded: unknown = await import('./example', { with: { type: 'json' } });\n",
+        path,
+      ),
+    ).toEqual(['1 no-restricted-syntax']);
+  },
+);
+
+test('a field named failing outside a test file passes, read or destructured', async () => {
+  expect(
+    await repositoryProblems(
+      'export interface Health {\n  readonly failing: boolean;\n}\n\nexport function down(health: Health): boolean {\n  const { failing } = health;\n  return failing || health.failing;\n}\n',
+      join('src', 'example.ts'),
+    ),
+  ).toEqual([]);
+});
+
 test.each(['src/example.ts', 'scripts/check.ts', 'tests/example.test.ts', 'eslint.config.ts', 'commitlint.config.js'])(
-  'eslint.config.ts turns the gate rule on for %s',
+  'eslint.config.ts turns the gate rule on for %s, and refuses every directive comment but a disable or an enable',
   async (path: string) => {
     const repository = new ESLint({ cwd: ROOT, overrideConfigFile: join(ROOT, 'eslint.config.ts') });
     const config: unknown = await repository.calculateConfigForFile(join(ROOT, path));
 
-    expect(config).toMatchObject({ rules: { 'gate/visible-reason': [2] } });
+    expect(config).toMatchObject({
+      rules: {
+        'gate/visible-reason': [2],
+        '@eslint-community/eslint-comments/no-use': [
+          2,
+          { allow: ['eslint-disable', 'eslint-enable', 'eslint-disable-line', 'eslint-disable-next-line'] },
+        ],
+      },
+    });
   },
 );

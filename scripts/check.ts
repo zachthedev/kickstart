@@ -9,26 +9,27 @@
  * CONTRIBUTING.md points at. CI's gate job runs this file on three platforms,
  * so a green run here is a green run there.
  *
- * No row resolves a program from the machine's PATH. Bun is the process
- * running this file, every JavaScript tool starts through `bun x --bun
- * --no-install` once the checkout's node_modules/.bin holds it, and every
- * other tool resolves through `mise which`. Every tool that searches for a
- * config runs with its one config named. Before any row, the gate refuses to
- * run beside a config a tool would read in place of the one the gate names, a
- * tracked env file Bun loads, a project config outside the named paths, a
- * node_modules below the root, a JSON key Bun and the shared commits job read
- * two ways, a patch a package.json names, anything that would steer how Bun
- * resolves the gate's own imports, a workflow the workflows row would not
- * read, or an inline zizmor waiver under .github. No config's text is held:
- * code-owner review is the control on a change to one. The other files that
- * run code before the gate's first line, such as a bunfig.toml preload, are
+ * No row resolves a tool from the machine's PATH. Bun is the process running
+ * this file, every JavaScript tool starts through `bun x --bun --no-install`
+ * once the checkout's node_modules/.bin holds it, and every other tool resolves
+ * through `mise which`. The programs the gate starts from PATH are git, mise
+ * and gh, the prerequisites CONTRIBUTING.md's Setup names. Every tool that
+ * searches for a config runs with its one config named. Before any row, the
+ * gate refuses to run beside a config a tool would read in place of the one the
+ * gate names, a project config outside the named paths, a node_modules below
+ * the root, anything that would steer how Bun resolves the gate's own imports,
+ * a workflow the workflows row would not read, or a composite action outside
+ * .github/actions/. No config's text is held: code-owner review is the control
+ * on a change to one. The tracked files that run code or waive a check before
+ * any row reads them, such as an env file, a patchedDependencies key, a
+ * repeated JSON key, a bunfig.toml preload or an inline zizmor waiver, are
  * refused before a merge by the shared commits and workflows jobs. A pull
- * request cannot edit those jobs at the pin ci.yml calls, and code-owner
- * review of .github/workflows/ is the control on a change to that pin or to
- * the job that runs this file. Every row that walks the tree says how many
- * files it checked and fails when that is none. The rows that run the
- * repository's own code come last, and the preflight runs again after each.
- * No row carries a deadline: the CI job's timeout-minutes bounds the gate.
+ * request cannot edit those jobs at the pin ci.yml calls, and code-owner review
+ * of .github/workflows/ is the control on a change to that pin or to the job
+ * that runs this file. Every row that walks the tree says how many files it
+ * checked and fails when that is none. The rows that run the repository's own
+ * code come last, and the preflight runs again after each. No row carries a
+ * deadline: the CI job's timeout-minutes bounds the gate.
  */
 
 import { existsSync } from 'node:fs';
@@ -51,8 +52,8 @@ import {
   compilerFinding,
   files,
   ignoreCommentFindings,
-  inheritedCallFindings,
-  inheritedCalls,
+  lintedAsWritten,
+  lintedWithoutComments,
   taploFound,
   testCount,
   unreadSourceFinding,
@@ -77,8 +78,9 @@ const BUN = process.execPath;
 /**
  * The flag every Bun the gate starts directly gets first, so no env file on
  * disk sets a variable inside the row: the test runs and the ShellCheck
- * stand-in. Bun 1.4.2 honors it over all eight names it loads, in every mode.
- * bunx ignores it, so no JavaScript tool gets it.
+ * stand-in. The pinned Bun honors it over every env file it loads, in each
+ * mode, as a case in run.test.ts holds. `bun x` ignores it, so no JavaScript
+ * tool gets it.
  */
 const NO_ENV_FILE = '--no-env-file';
 
@@ -206,6 +208,18 @@ function batches(paths: readonly string[]): string[][] {
  */
 const TEST_ENV: Readonly<Record<string, string>> = { CI: 'true' };
 
+/**
+ * How many of the gate's own tests skip on this platform by design: the cases
+ * for a behavior only Windows has skip on Linux and macOS, and the cases for
+ * one Windows lacks skip there. The scripts:test row fails on any other count,
+ * so on Windows it fails where the temporary directory's volume keeps no 8.3
+ * short names, since the short-name case skips there too.
+ */
+const SCRIPTS_TEST_SKIPS = process.platform === 'win32' ? 2 : 6;
+
+/** How many of the repository's own tests skip on this platform by design. The test row fails on any other count. */
+const TEST_SKIPS = 0;
+
 /* ///// scripts:test ///// */
 
 // The gate's own tests. Each case starts a stand-in in place of every program
@@ -217,7 +231,7 @@ async function scriptsTest(): Promise<string> {
   if (finished.exitCode !== 0) {
     throw new Error(`bun test ./scripts/ ${describe(finished)}`);
   }
-  return testCount('bun test ./scripts/', finished);
+  return testCount('bun test ./scripts/', finished, SCRIPTS_TEST_SKIPS);
 }
 
 /* ///// tools ///// */
@@ -234,12 +248,13 @@ async function tools(): Promise<undefined> {
 
 /* ///// typecheck ///// */
 
-/** The package.json name of the native TypeScript 7 compiler the typecheck row runs. */
+/** The package.json name of the native TypeScript compiler the typecheck row runs. */
 const NATIVE = '@typescript/native';
 
-// The native TypeScript 7 compiler, from the `@typescript/native` alias. The
-// 6.x `typescript` package that typescript-eslint needs ships a tsc too, and
-// bun install links a command two packages claim to the one whose name sorts
+// The native TypeScript compiler, from the `@typescript/native` alias. The
+// `typescript` package typescript-eslint needs, on the last major carrying the
+// JavaScript compiler API, ships a tsc too, and bun install links a command
+// two packages claim to the one whose name sorts
 // first, so node_modules/.bin/tsc is the alias's. The row first holds
 // `tsc --version` to the major package.json pins for the alias, so a renamed
 // alias or another tie-break turns it red. Each project is named, so
@@ -303,69 +318,17 @@ function isAbsolutePath(line: string): boolean {
 
 /* ///// lint ///// */
 
-/** One message ESLint's json formatter reports against a file. */
-interface LintMessage {
-  readonly ruleId?: string | null;
-  readonly severity?: number;
-  readonly message?: string;
-  readonly line?: number;
-  readonly column?: number;
-}
-
-/** One file ESLint's json formatter reports on. */
-interface LintResult {
-  readonly filePath: string;
-  readonly messages: readonly LintMessage[];
-}
-
-/** Whether `value`, parsed from ESLint's json output, is one file's result. */
-function isLintResult(value: unknown): value is LintResult {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as { filePath?: unknown }).filePath === 'string' &&
-    Array.isArray((value as { messages?: unknown }).messages)
-  );
-}
-
-// The json formatter names every file ESLint linted, so the row counts them
-// and prints each problem itself. --config names the one config, so ESLint
-// runs no eslint.config.* nearer a file than the root.
+// Two passes, each with the json formatter, which names every file ESLint
+// linted, so the row counts them and prints each problem itself. The first
+// reads every comment and allows no warning. The second reads no comment as a
+// directive or as configuration, and the row refuses every report there from a
+// rule that reads comments, over the same files. rows.ts holds what the row
+// concludes from each. --config names the one config, so ESLint runs no
+// eslint.config.* nearer a file than the root.
 async function lint(): Promise<string> {
-  const finished = await run([
-    ...jsTool('eslint'),
-    '--config',
-    ESLINT_CONFIG,
-    '.',
-    '--max-warnings=0',
-    '--format',
-    'json',
-  ]);
-  let results: unknown;
-  try {
-    results = JSON.parse(plain(finished.stdout));
-  } catch {
-    // No json means ESLint stopped before it linted anything, a config error among them.
-    throw new Error(`eslint ${describe(finished)}`);
-  }
-  if (!Array.isArray(results) || !results.every((result) => isLintResult(result))) {
-    throw new Error(`eslint printed json that is not a list of file results: ${describe(finished)}`);
-  }
-  const problems = results.flatMap((result) =>
-    result.messages.map(
-      (message) =>
-        `${quote(result.filePath)}:${String(message.line ?? 0)}:${String(message.column ?? 0)}  ${message.severity === 2 ? 'error' : 'warning'}  ${message.message ?? ''}  ${message.ruleId ?? ''}`,
-    ),
-  );
-  if (finished.exitCode !== 0) {
-    throw new Error(
-      `eslint exited ${String(finished.exitCode)} over ${files(results.length)}:\n${[...problems, finished.stderr.trim()].filter((line) => line.length > 0).join('\n')}`,
-    );
-  }
-  if (results.length === 0) {
-    throw new Error('eslint linted no file, so it checked nothing');
-  }
-  return files(results.length);
+  const eslint = [...jsTool('eslint'), '--config', ESLINT_CONFIG];
+  const first = lintedAsWritten(await run([...eslint, '.', '--max-warnings=0', '--format', 'json']));
+  return lintedWithoutComments(await run([...eslint, '--no-inline-config', '.', '--format', 'json']), first);
 }
 
 /* ///// format ///// */
@@ -592,85 +555,7 @@ async function workflows(quick: boolean): Promise<string> {
       `zizmor completed ${files(completed.size)}, and these tracked workflows were not among them: ${unaudited.map((path) => quote(path)).join(', ') || 'none'}`,
     );
   }
-  const held = await inheritedCallsHeld(await binary('zizmor'));
-  return `${files(workflowFiles.length)}, zizmor ${online ? 'online' : 'offline'} over ${files(completed.size)}, ${String(held)} secrets-inherit ${held === 1 ? 'call' : 'calls'} held`;
-}
-
-/** What a job that passes `secrets: inherit` may call: a reusable workflow of zachthedev/.github. */
-const INHERIT_CALLEE = 'zachthedev/.github/.github/workflows/';
-
-/**
- * The files the committed zizmor.yml's `secrets-inherit` rule waives, or none
- * when it names no such rule.
- *
- * @throws When the config does not parse, or the list holds anything but strings
- */
-async function inheritWaivers(): Promise<string[]> {
-  let parsed: unknown;
-  try {
-    parsed = Bun.YAML.parse(await Bun.file(ZIZMOR_CONFIG).text());
-  } catch (error: unknown) {
-    throw new Error(
-      `${ZIZMOR_CONFIG} does not parse as the gate reads YAML, so its secrets-inherit waivers are unknown: ${quote(error instanceof Error ? error.message : String(error))}`,
-      { cause: error },
-    );
-  }
-  const ignore = (parsed as { rules?: { 'secrets-inherit'?: { ignore?: unknown } } } | null)?.rules?.['secrets-inherit']
-    ?.ignore;
-  if (ignore === undefined) {
-    return [];
-  }
-  if (!Array.isArray(ignore) || !ignore.every((entry) => typeof entry === 'string')) {
-    throw new Error(`${ZIZMOR_CONFIG} rules.secrets-inherit.ignore is not a list of file names`);
-  }
-  return ignore;
-}
-
-/**
- * How many jobs pass `secrets: inherit`, each held to {@link INHERIT_CALLEE},
- * with a call in every file the committed zizmor.yml waives.
- *
- * @remarks
- * zizmor runs with no config and with inline ignore comments off, so it
- * reports every such job, waived or not. ZIZMOR_CONFIG would name a config
- * against --no-config, so it is removed. zizmor exits 10 to 14 when it reports
- * findings.
- *
- * @throws When zizmor fails, a job calls anything else, or a waived file holds no call
- */
-async function inheritedCallsHeld(zizmor: string): Promise<number> {
-  const finished = await run(
-    [
-      zizmor,
-      '--no-progress',
-      '--offline',
-      '--no-config',
-      '--no-ignores',
-      '--strict-collection',
-      '--format',
-      'json',
-      '--collect=all',
-      '.github',
-    ],
-    { ZIZMOR_CONFIG: undefined },
-  );
-  if (finished.exitCode !== 0 && (finished.exitCode < 10 || finished.exitCode > 14)) {
-    throw new Error(`zizmor with no config ${describe(finished)}`);
-  }
-  let calls: ReturnType<typeof inheritedCalls>;
-  try {
-    calls = inheritedCalls(finished.stdout);
-  } catch (error: unknown) {
-    throw new Error(
-      `zizmor with no config: ${error instanceof Error ? error.message : String(error)}. It ${describe(finished)}`,
-      { cause: error },
-    );
-  }
-  const refused = inheritedCallFindings(calls, [INHERIT_CALLEE], await inheritWaivers());
-  if (refused.length > 0) {
-    throw new Error(refused.join('\n'));
-  }
-  return calls.length;
+  return `${files(workflowFiles.length)}, zizmor ${online ? 'online' : 'offline'} over ${files(completed.size)}`;
 }
 
 /* ///// markers ///// */
@@ -714,7 +599,7 @@ async function test(): Promise<string> {
   if (finished.exitCode !== 0) {
     throw new Error(`bun test exited ${String(finished.exitCode)}. The report is above`);
   }
-  return testCount('bun test', finished);
+  return testCount('bun test', finished, TEST_SKIPS);
 }
 
 /* ///// The rows ///// */
@@ -748,7 +633,7 @@ const rows: readonly Row[] = [
   {
     name: 'workflows',
     checks:
-      'actionlint over every tracked workflow with ShellCheck behind a stand-in that refuses its directives, both proven by a canary, then zizmor over .github with nothing ignored and each workflow proven audited, online in check when gh has a token and offline otherwise, then every job passing secrets: inherit held to a reusable workflow of zachthedev/.github',
+      'actionlint over every tracked workflow with ShellCheck behind a stand-in that refuses its directives, both proven by a canary, then zizmor over .github with nothing ignored and each workflow proven audited, online in check when gh has a token and offline otherwise',
     check: workflows,
   },
   {
@@ -758,21 +643,22 @@ const rows: readonly Row[] = [
   },
   {
     name: 'lint',
-    checks: 'eslint over the tree with eslint.config.ts alone and no warnings allowed, counting the files it linted',
+    checks:
+      'eslint over the tree with eslint.config.ts alone and no warnings allowed, counting the files it linted, and no gate/visible-reason report a directive turned off, then eslint again over the same files with --no-inline-config and no report from a rule that reads comments',
     check: lint,
     runsCode: true,
   },
   {
     name: 'scripts:test',
     checks:
-      "bun test over the gate's own scripts/*.test.ts, every program they start a stand-in, counting the tests and failing when every one was skipped",
+      "bun test over the gate's own scripts/*.test.ts, every program they start a stand-in, counting the tests and failing on a skip count other than the one declared for this platform",
     check: scriptsTest,
     runsCode: true,
   },
   {
     name: 'test',
     checks:
-      'bun test with coverage over every test outside the root scripts directory, counting them as scripts:test does',
+      'bun test with coverage over every test outside the root scripts directory, counting them as scripts:test does against its own declared skips',
     check: test,
     slow: true,
     runsCode: true,
