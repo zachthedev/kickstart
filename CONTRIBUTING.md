@@ -164,8 +164,10 @@ apply. -->
 - A test states what the code is supposed to do, derived from the requirement, never copied from what the code
   printed.
 - Table-driven cases through `test.each` are the default where several inputs share one assertion.
-- A `failing` or `failingIf` case is refused on `test`, `it`, `describe` and any chain from them, since bun test
-  counts a failing case as a pass and names it nowhere in its summary.
+- bun test counts a `failing` or `failingIf` case as a pass and names it nowhere in its summary. So in a test file,
+  a name bun test finds such as `*.test.ts`, ESLint refuses a member named `failing` or `failingIf` on any chain, a
+  destructuring that takes either, a destructuring of `test`, `it` or `describe`, and a computed member of `test`,
+  `it` or `describe` or one step down their chain. A file that is no test file may name a field `failing`.
 - A test that skips on a platform by design changes the count `scripts/check.ts` declares for its row. The count
   is a number, not the skipped tests' names, so review reads which tests a change skips.
 - A test touches no file outside a temporary directory and no network. Anything the code under test reaches in
