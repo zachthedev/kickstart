@@ -556,10 +556,11 @@ A local run that fails or disagrees with CI:
   `safe.directory` entry, by design.
 - A row that fails because a process its tool started still holds the tool's output leaves that process running,
   since nothing the gate can reach ends a process whose parent is gone. Find it and end it.
-- On a Windows checkout, a case variant or an 8.3 short name of a tracked path, such as `GITHUB~1` for `.github` or
-  `packag~1.jso` for `package.json`, can merge two tracked paths into one file, and git warns of a collision. Your
-  local gate then reads a file the diff does not show, while the shared jobs on Linux read the real files. Read a
-  pull request's diff before you run its branch ([Safety](#safety)).
+- On a case-insensitive checkout, on Windows or macOS, a case variant of a tracked path can merge two tracked paths
+  into one file, and on Windows so can an 8.3 short name, such as `GITHUB~1` for `.github` or `packag~1.jso` for
+  `package.json`. git warns of a collision. Your local gate then reads a file the diff does not show, while the
+  shared jobs on Linux read the real files. Read a pull request's diff before you run its branch
+  ([Safety](#safety)).
 - On Windows, a `scripts:test` row that skips one test more than it declares can come from the temporary
   directory's volume. The case for a program reached through an 8.3 short name skips where the volume keeps no
   short names. Point `TEMP` at a volume that keeps them.
