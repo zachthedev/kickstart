@@ -59,14 +59,17 @@ read.
 
 What reaches the tools from your own environment:
 
-- `BUN_OPTIONS` reaches every direct Bun start: the gate itself through `bun run check`, `check:quick`, `check:rows`
-  and the push hook, `bun run markers`, and the `prepare` script's lefthook install. A `--preload` in it runs a
-  module first in each. The gate withholds it from the processes it starts, and a tool started through
-  `bun x --bun --no-install` does not read it. No JavaScript tool the gate or the hooks start through `bun x` starts
-  Bun children of its own. A tool that does, such as wrangler or vitest, passes `BUN_OPTIONS` and
-  `BUN_INSPECT_PRELOAD` on to them, and a repository that runs one names it here. Leave it unset.
+- `BUN_OPTIONS`, which Bun reads as arguments ahead of its own. A `--preload` in it runs a module first in the gate
+  itself through `bun run check`, `check:quick`, `check:rows` and the push hook, in `bun run markers`, in a
+  `bun test` you run, and in the `prepare` script's lefthook install, which `bun install` runs unless
+  `--ignore-scripts` is passed. It runs none in `bun install` itself, in `bun run audit`, or in a tool started
+  through `bun x --bun --no-install`. The gate withholds `BUN_OPTIONS` from the processes it starts. No JavaScript
+  tool the gate or the hooks start through `bun x` starts Bun children of its own. A tool that does, such as
+  wrangler or vitest, passes `BUN_OPTIONS` and `BUN_INSPECT_PRELOAD` on to them, and a repository that runs one
+  names it here. Leave it unset.
 - `BUN_INSPECT`, `BUN_INSPECT_CONNECT_TO` and `BUN_INSPECT_PRELOAD`. Leave them unset too. The last runs a module in
-  every direct Bun start, the gate's `bun test` rows among them, and nothing in the hooks or the gate clears them.
+  each start where a `--preload` in `BUN_OPTIONS` runs one, and in the gate's `bun test` rows as well, since nothing
+  in the hooks or the gate clears them. It runs none where a `--preload` runs none.
 - A personal env file. `bun x` ignores `--no-env-file`, so an untracked `.env` reaches every JavaScript tool the
   hooks, the `format` script and the gate's rows start, and can change what one reports
   ([Troubleshooting](#troubleshooting)).
