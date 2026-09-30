@@ -61,16 +61,16 @@ What reaches the tools from your own environment:
 
 - `BUN_OPTIONS`, which Bun reads as arguments ahead of its own. A `--preload` in it runs a module first in each
   Bun start that runs code: a file, `bun test` or `bun -e`. Those include the gate itself, whichever script or hook
-  starts it, and a `bun test` you run. `bun install` runs one through the `prepare` script's lefthook install
-  unless `--ignore-scripts` is passed. It runs none in `bun install` itself, in `bun run audit`, or in a tool
-  started through `bun x --bun --no-install`. The gate withholds `BUN_OPTIONS` from the processes it starts. A tool
-  started through `bun x` that starts Bun processes of its own passes `BUN_OPTIONS` and `BUN_INSPECT_PRELOAD` on to
-  them. Leave it unset.
+  starts it, and a `bun test` you run. `bun install` runs one in lefthook's own install script where no `node` is on
+  `PATH`, and one in the `prepare` script's lefthook install. `--ignore-scripts` stops both. It runs none in
+  `bun install` itself, in `bun run audit`, or in a tool started through `bun x --bun --no-install`. The gate
+  withholds `BUN_OPTIONS` from the processes it starts. A tool started through `bun x` that starts Bun processes of
+  its own passes `BUN_OPTIONS` and `BUN_INSPECT_PRELOAD` on to them. Leave it unset.
 - `BUN_INSPECT`, `BUN_INSPECT_CONNECT_TO` and `BUN_INSPECT_PRELOAD`. Leave them unset too. The last runs a module in
   each start where a `--preload` in `BUN_OPTIONS` runs one. The gate withholds `BUN_OPTIONS` but not these. So the
   last also runs a module in each `bun test` the gate starts, and in the ShellCheck stand-in,
   `scripts/shellcheck.ts`, that actionlint starts. It runs none in `bun install` itself, in `bun run audit`, or in a
-  `bun x` start.
+  tool started through `bun x --bun`.
 - A personal env file. `bun x` ignores `--no-env-file`, so an untracked `.env` reaches every JavaScript tool the
   hooks, the `format` script and the gate's rows start, and can change what one reports
   ([Troubleshooting](#troubleshooting)).
