@@ -280,19 +280,20 @@ report on that directive, and ESLint lists such a report apart from the problems
 row then fails on a tracked file ending in `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.mts` or `.cts`, in any
 case, that the first pass did not lint. Bun runs each of those as a module, and ESLint passes over a file without a
 word where an ignore covers it or no `files` pattern matches it. So a file tracked under an ignored directory such
-as `dist/`, a `.jsx`, or a `.TS` fails the row, unless a lint exemption names it. The second pass runs with
+as `dist/`, a `.jsx`, or a `.TS` fails the row, unless another row holds it. The second pass runs with
 `--no-inline-config`, which reads no comment as a directive or as configuration, over the same files. It refuses
 every report there from a rule that reads comments: `gate/visible-reason`, `@typescript-eslint/ban-ts-comment` and
 every eslint-comments rule. So a comment that turns one of those rules off, `no-use` included, fails the row. The
 second pass reports each rule a waiver turns off, and the row passes those.
 
-A tracked file ESLint does not read passes the `lint` row only when another row holds it and `LINT_EXEMPTIONS` in
-`scripts/check.ts` names it with that row. This repository's list is empty. A generated file that a row regenerates
-and diffs against the index is one another row holds. Each exemption names one tracked file by its path from the
-root, so a pattern names none. The row refuses an exemption naming no tracked JavaScript or TypeScript file, or a
-file the first pass linted, since it exempts nothing. It also refuses one whose reason holds no letter or digit once
-default-ignorable code points are removed. So the ignores keep untracked output, and a file another row holds, out
-of the lint.
+A tracked file ESLint does not read passes the `lint` row when another row's `holds` in `scripts/check.ts` name it.
+A row lists in `holds` each tracked JavaScript or TypeScript file it holds byte for byte, such as a generated file
+it regenerates and diffs against the index. Its check reads the same constant, so what it declares and what it holds
+stay one list. No row in this repository holds a file. The `lint` row names each held file with its row in its line.
+A hold names a file in the exact spelling `git ls-files` prints, so it names one file on every platform, and a
+pattern names none. The row refuses a hold naming no tracked JavaScript or TypeScript file, or a file the first pass
+linted, since it passes nothing. It also refuses a file held twice and a hold on the `lint` row itself. So the
+ignores keep untracked output, and a file another row holds, out of the lint.
 
 The `lint` row runs `eslint.config.ts`, the `scripts:test` row runs the gate's own tests, `bun test ./scripts/`,
 and the `test` row runs every other test with coverage. They run after every other row, since each runs repository
@@ -364,15 +365,17 @@ the job that runs the gate. The shared jobs refuse:
   `node`), and a root entry named `'`, which actionlint would read in place of the ShellCheck stand-in.
 
 Review refuses what no row checks, since each such file sits in the diff and runs no code: any file under `dist/`,
-`coverage/` or `.claude/worktrees/` but a JavaScript or TypeScript one, which the `lint` row refuses unless an
-exemption names it, anything under a `.git`, `.sl`, `.svn`, `.hg` or `.jj` directory, a JavaScript or declaration
-file beyond `commitlint.config.js` and the files `LINT_EXEMPTIONS` names, a path below a personal file's name, and a
+`coverage/` or `.claude/worktrees/` but a JavaScript or TypeScript one, which the `lint` row refuses unless another
+row holds it, anything under a `.git`, `.sl`, `.svn`, `.hg` or `.jj` directory, a JavaScript or declaration file
+beyond `commitlint.config.js` and the files the rows' `holds` name, a path below a personal file's name, and a
 tracked `.claude/settings.local.json`. Review also refuses a tracked `.npmrc`: a registry it names fails every
-package's integrity check against `bun.lock`. A tracked file ESLint does not read passes the `lint` row only when
-another row holds it and `LINT_EXEMPTIONS` names it with that row. No check proves that the named row holds the
-file, so review reads each exemption's reason against that row. The coverage checks in the `typecheck` and `lint`
-rows find a file by its extension. Bun also runs a file with no extension as TypeScript, started or imported, and a
-`.es6` file it starts directly. Review alone reads such a tracked file, since neither check names it.
+package's integrity check against `bun.lock`. A hold lifts more than lint. The `lint` row's `@ts-nocheck` refusal
+never reads a held file, no project reads a JavaScript file, `skipLibCheck` skips every declaration file, and
+`.prettierignore` keeps the three ignored directories out of the `format` row. So the holding row is a held file's
+one reader. No check proves that a row's check regenerates and compares each file its `holds` name, so review reads
+the check against each. The coverage checks in the `typecheck` and `lint` rows find a file by its extension. Bun
+also runs a file with no extension as TypeScript, started or imported, and a `.es6` file it starts directly. Review
+alone reads such a tracked file, since neither check names it.
 
 The `tools` row reads `mise.toml` and `mise.lock` against the expectations in `scripts/tools.ts`, and installs
 from the lockfile only after that read passes. `mise.toml` holds `[tools]`, `[tool_config]` and `[settings]`
