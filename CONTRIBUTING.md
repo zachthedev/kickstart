@@ -61,11 +61,12 @@ What reaches the tools from your own environment:
 
 - `BUN_OPTIONS`, which Bun reads as arguments ahead of its own. A `--preload` in it runs a module first in each
   Bun start that runs code: a file, `bun test` or `bun -e`. Those include the gate itself, whichever script or hook
-  starts it, and a `bun test` you run. `bun install` runs one in lefthook's own install script where no `node` is on
-  `PATH`, and one in the `prepare` script's lefthook install. `--ignore-scripts` stops both. It runs none in
-  `bun install` itself, in `bun run audit`, or in a tool started through `bun x --bun --no-install`. The gate
-  withholds `BUN_OPTIONS` from the processes it starts. A tool started through `bun x` that starts Bun processes of
-  its own passes `BUN_OPTIONS` and `BUN_INSPECT_PRELOAD` on to them. Leave it unset.
+  starts it, and a `bun test` you run. `bun install` runs one in the `prepare` script's lefthook install. Where no
+  `node` is on `PATH`, it runs another in lefthook's own install script when the install installs lefthook, as a
+  first install or a lefthook bump does. `--ignore-scripts` stops both. It runs none in `bun install` itself, in
+  `bun run audit`, or in a tool started through `bun x --bun --no-install`. The gate withholds `BUN_OPTIONS` from
+  the processes it starts. A tool started through `bun x` that starts Bun processes of its own passes `BUN_OPTIONS`
+  and `BUN_INSPECT_PRELOAD` on to them. Leave it unset.
 - `BUN_INSPECT`, `BUN_INSPECT_CONNECT_TO` and `BUN_INSPECT_PRELOAD`. Leave them unset too. The last runs a module in
   each start where a `--preload` in `BUN_OPTIONS` runs one. The gate withholds `BUN_OPTIONS` but not these. So the
   last also runs a module in each `bun test` the gate starts, and in the ShellCheck stand-in,
@@ -295,12 +296,12 @@ second pass reports each rule a waiver turns off, and the row passes those.
 
 A tracked file ESLint does not read passes the `lint` row when another row's `holds` in `scripts/check.ts` name it.
 A row lists in `holds` each tracked JavaScript or TypeScript file it holds byte for byte, such as a generated file
-it regenerates and diffs against the index. Its check reads the same constant, so what it declares and what it holds
-stay one list. No row in this repository holds a file. The `lint` row names each held file with its row in its line.
-A hold names a file in the exact spelling `git ls-files` prints, so it names one file on every platform, and a
-pattern names none. The row refuses a hold naming no tracked JavaScript or TypeScript file, or a file the first pass
-linted, since it passes nothing. It also refuses a file held twice and a hold on the `lint` row itself. So the
-ignores keep untracked output, and a file another row holds, out of the lint.
+it regenerates and diffs against the index. Such a row names each file through the constant its check reads, and
+review checks that it does. No row in this repository holds a file. The `lint` row names each held file with its
+row in its line. A hold names a file in the exact spelling `git ls-files` prints, so it names one file on every
+platform, and a pattern names none. The row refuses a hold naming no tracked JavaScript or TypeScript file, or a
+file the first pass linted, since it passes nothing. It also refuses a file held twice and a hold on the `lint` row
+itself. So the ignores keep untracked output, and a file another row holds, out of the lint.
 
 The `lint` row runs `eslint.config.ts`, the `scripts:test` row runs the gate's own tests, `bun test ./scripts/`,
 and the `test` row runs every other test with coverage. They run after every other row, since each runs repository
@@ -378,11 +379,12 @@ beyond `commitlint.config.js` and the files the rows' `holds` name, a path below
 tracked `.claude/settings.local.json`. Review also refuses a tracked `.npmrc`: a registry it names fails every
 package's integrity check against `bun.lock`. A hold lifts more than lint. The `lint` row's `@ts-nocheck` refusal
 never reads a held file, no project reads a JavaScript file, `skipLibCheck` skips every declaration file, and
-`.prettierignore` keeps the three ignored directories out of the `format` row. So the holding row is a held file's
-one reader. No check proves that a row's check regenerates and compares each file its `holds` name, so review reads
-the check against each. The coverage checks in the `typecheck` and `lint` rows find a file by its extension. Bun
-also runs a file with no extension as TypeScript, started or imported, and a `.es6` file it starts directly. Review
-alone reads such a tracked file, since neither check names it.
+`.prettierignore` keeps the three ignored directories out of the `format` row. So for a held JavaScript or
+declaration file under one of those directories, the holding row is the file's one reader. A held `.ts` file
+elsewhere is still typechecked and formatted. No check proves that a row's check regenerates and compares each file
+its `holds` name, so review reads the check against each. The coverage checks in the `typecheck` and `lint` rows
+find a file by its extension. Bun also runs a file with no extension as TypeScript, started or imported, and a
+`.es6` file it starts directly. Review alone reads such a tracked file, since neither check names it.
 
 The `tools` row reads `mise.toml` and `mise.lock` against the expectations in `scripts/tools.ts`, and installs
 from the lockfile only after that read passes. `mise.toml` holds `[tools]`, `[tool_config]` and `[settings]`
