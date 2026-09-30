@@ -586,8 +586,12 @@ A local run that fails or disagrees with CI:
   rows too. Leave all four unset ([Safety](#safety)).
 - A local gate can pass where CI's `commits` or `workflows` job fails, since those jobs refuse files the gate
   does not repeat ([The gate](#the-gate)).
-- A `workflows` row that differs from CI can come from zizmor's online audits. They run on your machine when gh
-  answers with a token and never in CI's gate job. `ZIZMOR_OFFLINE=1` runs what CI runs.
+- A `workflows` row that differs from CI can come from zizmor's online audits. Three of them can fail a
+  hash-pinned workflow: a known-vulnerable action, an impostor commit, and a hash pin whose version comment names
+  another tag. An offline run sees none of the three. The row runs them only in `bun run check`, when gh answers
+  with a token. CI's gate job runs offline, and the shared `workflows` job runs them online on every pull request.
+  So a local row green offline can meet a red `workflows` job, and a local row red online can meet a green gate
+  job. `ZIZMOR_OFFLINE=1` runs what CI's gate job runs.
 - In a checkout another account owns, git refuses the repository as dubious ownership, and the gate stops. Make
   your account the directory's owner. The gate starts git with no system or global config, so it reads no
   `safe.directory` entry, by design.
