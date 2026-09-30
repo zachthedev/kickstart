@@ -77,6 +77,9 @@ What reaches the tools from your own environment:
 - `MISE_BACKENDS_<TOOL>`. Leave it unset. It overrides a tool's backend from the environment, no setting reports
   it, and the gate does not close that gap.
 
+<!-- TODO(kickstart): replace the paragraph below with your project's own Bun starts that run a file, and each tool
+it starts through `bun x` that starts Bun processes of its own. -->
+
 In this repository, a preload module also runs in `bun run markers`, a Bun start that runs a file. No JavaScript
 tool the gate or the hooks start through `bun x` starts a Bun process of its own.
 
