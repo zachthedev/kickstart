@@ -69,6 +69,36 @@ export function compilerFinding(printed: string, spec: string): string | undefin
   return undefined;
 }
 
+/* ///// Lint coverage ///// */
+
+/**
+ * A module Bun runs, by the end of its name through {@link fold}: a
+ * JavaScript or TypeScript extension, which Bun reads in any case. The parser
+ * eslint.config.ts sets reads each.
+ */
+const LINTED_SOURCE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
+
+/**
+ * A finding naming every tracked JavaScript or TypeScript file in `tracked`
+ * that ESLint did not lint, or undefined when it linted every one. `linted`
+ * holds each file the lint row's first pass reported, through
+ * {@link comparable}.
+ *
+ * @remarks
+ * ESLint lints a file that a config's `files` pattern matches and no ignore
+ * covers, and it names no file it passes over. An ignore meant for untracked
+ * output, such as `dist/**`, hides a file someone tracks there too. A `files`
+ * pattern that misses an extension, such as `.jsx`, or a case of one, such as
+ * `.TS`, hides every file ending in it.
+ */
+export function unlintedSourceFinding(tracked: readonly string[], linted: ReadonlySet<string>): string | undefined {
+  const unlinted = tracked.filter((path) => LINTED_SOURCE.test(fold(path)) && !linted.has(comparable(path)));
+  if (unlinted.length === 0) {
+    return undefined;
+  }
+  return `eslint lints no ${unlinted.map((path) => quote(path)).join(', ')}, so no lint rule reads ${unlinted.length === 1 ? 'it' : 'them'}. Match each with a files pattern in eslint.config.ts and no ignore, or stop tracking it`;
+}
+
 /* ///// What ESLint reports ///// */
 
 /** One message ESLint's json formatter reports against a file. */

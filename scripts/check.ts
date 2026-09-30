@@ -56,6 +56,7 @@ import {
   lintedWithoutComments,
   taploFound,
   testCount,
+  unlintedSourceFinding,
   unreadSourceFinding,
   zizmorCompleted,
 } from './rows';
@@ -320,14 +321,22 @@ function isAbsolutePath(line: string): boolean {
 
 // Two passes, each with the json formatter, which names every file ESLint
 // linted, so the row counts them and prints each problem itself. The first
-// reads every comment and allows no warning. The second reads no comment as a
-// directive or as configuration, and the row refuses every report there from a
-// rule that reads comments, over the same files. rows.ts holds what the row
-// concludes from each. --config names the one config, so ESLint runs no
+// reads every comment and allows no warning, and the row fails on a tracked
+// JavaScript or TypeScript file it did not lint. The second reads no comment
+// as a directive or as configuration, and the row refuses every report there
+// from a rule that reads comments, over the same files. rows.ts holds what the
+// row concludes from each. --config names the one config, so ESLint runs no
 // eslint.config.* nearer a file than the root.
 async function lint(): Promise<string> {
   const eslint = [...jsTool('eslint'), '--config', ESLINT_CONFIG];
   const first = lintedAsWritten(await run([...eslint, '.', '--max-warnings=0', '--format', 'json']));
+  const unlinted = unlintedSourceFinding(
+    await trackedFiles(),
+    new Set(first.map((result) => comparable(result.filePath))),
+  );
+  if (unlinted !== undefined) {
+    throw new Error(unlinted);
+  }
   return lintedWithoutComments(await run([...eslint, '--no-inline-config', '.', '--format', 'json']), first);
 }
 
@@ -644,7 +653,7 @@ const rows: readonly Row[] = [
   {
     name: 'lint',
     checks:
-      'eslint over the tree with eslint.config.ts alone and no warnings allowed, counting the files it linted, and no gate/visible-reason report a directive turned off, then eslint again over the same files with --no-inline-config and no report from a rule that reads comments',
+      'eslint over the tree with eslint.config.ts alone and no warnings allowed, counting the files it linted, every tracked JavaScript or TypeScript file among them, and no gate/visible-reason report a directive turned off, then eslint again over the same files with --no-inline-config and no report from a rule that reads comments',
     check: lint,
     runsCode: true,
   },
@@ -673,8 +682,72 @@ const glyph = (ok: boolean): string => (color ? styleText(ok ? 'green' : 'red', 
 const width = Math.max(...rows.map((row) => row.name.length));
 const seconds = (started: number): string => `${((performance.now() - started) / 1000).toFixed(1)}s`;
 
-async function main(): Promise<number> {
-  if (process.argv.includes('--rows')) {
+/** The flags the gate takes. Any other argument that starts with `--` is refused. */
+const FLAGS: readonly string[] = ['--quick', '--rows'];
+
+/** What a run's arguments ask for. */
+export interface Selection {
+  /** The rows to run, in the table's order. */
+  readonly rows: readonly Row[];
+  /** `--quick`: an unnamed run leaves the slow rows out, and the workflows row runs zizmor offline. */
+  readonly quick: boolean;
+  /** `--rows`: print the rows and run nothing. */
+  readonly list: boolean;
+}
+
+/**
+ * What a run's arguments ask for, or the refusal it prints when an argument
+ * is neither a row's name nor a flag the gate takes.
+ *
+ * @remarks
+ * Every argument is read here and nowhere else. Named rows run in the table's
+ * order, slow or not. With no name, `--quick` leaves the slow rows out. One
+ * unknown name or flag refuses the whole run, so a mistyped name never selects
+ * nothing and reads as a green gate, and a mistyped flag never runs the whole
+ * gate in place of what it asked for.
+ *
+ * @param args - The arguments after the script's path
+ */
+export function selectRows(args: readonly string[]): Selection | { readonly refusal: string } {
+  const flags = args.filter((argument) => argument.startsWith('--'));
+  const names = args.filter((argument) => !argument.startsWith('--'));
+  const unknownFlags = flags.filter((flag) => !FLAGS.includes(flag));
+  const unknownNames = names.filter((name) => !rows.some((row) => row.name === name));
+  const refusals = [
+    ...(unknownFlags.length > 0
+      ? [
+          `no such flag: ${printable(unknownFlags.map((flag) => quote(flag)).join(', '))}. The gate takes ${FLAGS.join(' and ')}.`,
+        ]
+      : []),
+    ...(unknownNames.length > 0
+      ? [
+          `no such row: ${printable(unknownNames.map((name) => quote(name)).join(', '))}. bun run check:rows lists them.`,
+        ]
+      : []),
+  ];
+  if (refusals.length > 0) {
+    return { refusal: refusals.join(' ') };
+  }
+  const quick = flags.includes('--quick');
+  return {
+    rows: rows.filter((row) => (names.length > 0 ? names.includes(row.name) : !quick || row.slow !== true)),
+    quick,
+    list: flags.includes('--rows'),
+  };
+}
+
+/**
+ * Runs the gate over `args` and returns the process's exit code.
+ *
+ * @param args - The arguments after the script's path
+ */
+async function main(args: readonly string[]): Promise<number> {
+  const selection = selectRows(args);
+  if ('refusal' in selection) {
+    console.error(selection.refusal);
+    return 1;
+  }
+  if (selection.list) {
     console.log(dim('rows'));
     console.log();
     for (const row of rows) {
@@ -683,19 +756,8 @@ async function main(): Promise<number> {
     return 0;
   }
 
-  const quick = process.argv.includes('--quick');
-  const requested = process.argv.slice(2).filter((argument) => !argument.startsWith('--'));
-  const unknown = requested.filter((name) => !rows.some((row) => row.name === name));
-  if (unknown.length > 0) {
-    console.error(
-      `no such row: ${printable(unknown.map((name) => quote(name)).join(', '))}. bun run check:rows lists them.`,
-    );
-    return 1;
-  }
-  const selected = rows.filter((row) =>
-    requested.length > 0 ? requested.includes(row.name) : !quick || row.slow !== true,
-  );
-
+  const { quick } = selection;
+  const selected = selection.rows;
   console.log(dim(quick ? 'check:quick' : 'check'));
   console.log();
 
@@ -748,4 +810,8 @@ async function main(): Promise<number> {
   return 1;
 }
 
-process.exitCode = await main();
+// Run as a file, the gate runs. Imported, as scripts/check.test.ts does, it
+// runs nothing.
+if (import.meta.main) {
+  process.exitCode = await main(process.argv.slice(2));
+}

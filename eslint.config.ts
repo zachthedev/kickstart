@@ -59,7 +59,9 @@ const TEST_FILES = ['**/*{.test,_test,.spec,_spec}.{ts,tsx,mts,cts,js,jsx,mjs,cj
 // alias the typecheck row runs.
 export default defineConfig(
   // flat config reads no .gitignore, so every ignored directory a lint could
-  // reach is named here, the worktrees Claude Code writes included.
+  // reach is named here, the worktrees Claude Code writes included. The lint
+  // row refuses a tracked JavaScript or TypeScript file under one, so each
+  // ignore covers untracked output alone.
   globalIgnores(['node_modules/**', 'coverage/**', 'dist/**', '.claude/worktrees/**']),
 
   eslint.configs.recommended,
