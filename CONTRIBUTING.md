@@ -141,10 +141,13 @@ apply. -->
 - A comment explains why the code is shaped as it is. What changed goes in the commit message.
 - Every process a gate script under `scripts/` starts goes through `scripts/run.ts`, so every one starts from
   `PATH` alone, with no shell. A `package.json` script or a hook starts its tool itself.
-- Every `Bun.spawn` and `Bun.spawnSync` under `scripts/`, the tests' own included, passes `windowsHide: true`. On
-  Windows a console program opens a console window of its own when the process starting it has no console, as
-  under an agent or a service. A case in `scripts/run.test.ts` refuses a start without it, and a start made another
-  way: an alias of either, `Bun.$`, or `node:child_process`.
+- Every `Bun.spawn` and `Bun.spawnSync` under `scripts/`, the tests' own included, ends its options with
+  `windowsHide: true`. On Windows a console program opens a console window of its own when the process starting it
+  has no console, as under an agent or a service. A case in `scripts/run.test.ts` reads the direct starts in every
+  JavaScript or TypeScript file under `scripts/` and refuses one without the flag last. It also refuses each other
+  start it can see by name: `Bun.$`, `Bun.openInEditor`, a destructuring of a start from `Bun`, a member named
+  `Bun`, and an import, a `require` or a re-export of a start from `bun` or of `node:child_process`. It follows no
+  value, so review holds a start reached through `Bun` kept in another name or read through `satisfies`.
 - A message that quotes input, such as a path or a value read from a file, JSON-quotes it. A newline or a carriage
   return in input then stays inside one line, where it cannot start a workflow command in a CI log.
 - ESLint lints and Prettier formats. An ESLint rule that is wrong for this code is turned off in

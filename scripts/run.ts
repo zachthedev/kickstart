@@ -423,8 +423,8 @@ export async function run(
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
-      windowsHide: true,
       ...(options.timeoutMs === undefined ? {} : { timeout: options.timeoutMs }),
+      windowsHide: true,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
