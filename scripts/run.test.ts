@@ -3,6 +3,9 @@ import { dlopen, FFIType, ptr } from 'bun:ffi';
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, delimiter, dirname, join, sep } from 'node:path';
+import { ESLint, type Rule } from 'eslint';
+import { defineConfig } from 'eslint/config';
+import tseslint from 'typescript-eslint';
 import { fold, git, jsTool, resolveProgram, run } from './run';
 import { isolate, launcherName, spellings, StandIns, WINDOWS } from './stand-ins';
 import { trackedFindings } from './startup';
@@ -183,6 +186,168 @@ test('a program no PATH entry holds exits 127, saying which and that the working
   expect(finished.stderr).toStartWith('"gate-absent-program": ');
   expect(finished.stderr).toContain('working directory is never searched');
   expect(started()).toEqual([]);
+});
+
+/* ///// Console windows ///// */
+
+// On Windows a console program opens a console window of its own when the
+// process starting it has no console, as under an agent or a service, unless
+// the start passes windowsHide. So every Bun.spawn and Bun.spawnSync under
+// scripts/, the suites' own included, passes windowsHide: true in its options,
+// and nothing there starts a process another way: an alias or a destructuring
+// of either, Bun.$, an import of spawn, spawnSync or $ from bun, or
+// node:child_process. The check reads the files as ESLint parses them.
+
+/** The repository root, whose scripts/ the check reads. */
+const ROOT = join(import.meta.dir, '..');
+
+/** The Bun functions that start a process with options, and Bun's shell, which takes none. */
+const STARTS: readonly string[] = ['spawn', 'spawnSync', '$'];
+
+/** Each file in which the check passed a start, one entry for each start. */
+let hiddenStarts: string[] = [];
+
+const hiddenWindows: Rule.RuleModule = {
+  meta: {
+    type: 'problem',
+    schema: [],
+    messages: {
+      shown:
+        'This start passes no windowsHide: true, so on Windows it opens a console window when the process starting it has no console. Pass windowsHide: true in its options.',
+      reached:
+        'This starts a process another way than a Bun.spawn or Bun.spawnSync call, where windowsHide cannot be checked. Call Bun.spawn or Bun.spawnSync with windowsHide: true.',
+    },
+  },
+  create(context: Rule.RuleContext): Rule.RuleListener {
+    return {
+      MemberExpression(node): void {
+        if (node.object.type !== 'Identifier' || node.object.name !== 'Bun') {
+          return;
+        }
+        const name =
+          node.property.type === 'Identifier' && !node.computed
+            ? node.property.name
+            : node.property.type === 'Literal'
+              ? String(node.property.value)
+              : '';
+        if (!STARTS.includes(name)) {
+          return;
+        }
+        const call = node.parent;
+        if (name === '$' || call.type !== 'CallExpression' || call.callee !== node) {
+          context.report({ node, messageId: 'reached' });
+          return;
+        }
+        const [first, second] = call.arguments;
+        const options = first?.type === 'ObjectExpression' ? first : second;
+        const hidden =
+          options?.type === 'ObjectExpression' &&
+          options.properties.some(
+            (property) =>
+              property.type === 'Property' &&
+              !property.computed &&
+              ((property.key.type === 'Identifier' && property.key.name === 'windowsHide') ||
+                (property.key.type === 'Literal' && property.key.value === 'windowsHide')) &&
+              property.value.type === 'Literal' &&
+              property.value.value === true,
+          );
+        if (hidden) {
+          hiddenStarts.push(context.filename);
+        } else {
+          context.report({ node: call, messageId: 'shown' });
+        }
+      },
+      VariableDeclarator(node): void {
+        if (
+          node.init?.type === 'Identifier' &&
+          node.init.name === 'Bun' &&
+          node.id.type === 'ObjectPattern' &&
+          node.id.properties.some(
+            (property) =>
+              property.type === 'Property' && property.key.type === 'Identifier' && STARTS.includes(property.key.name),
+          )
+        ) {
+          context.report({ node, messageId: 'reached' });
+        }
+      },
+      ImportDeclaration(node): void {
+        const source = node.source.value;
+        const named = node.specifiers.some(
+          (specifier) =>
+            specifier.type === 'ImportSpecifier' &&
+            STARTS.includes(
+              specifier.imported.type === 'Identifier' ? specifier.imported.name : String(specifier.imported.value),
+            ),
+        );
+        if (source === 'node:child_process' || source === 'child_process' || (source === 'bun' && named)) {
+          context.report({ node, messageId: 'reached' });
+        }
+      },
+    };
+  },
+};
+
+/** An ESLint that runs the check alone, with no type information. */
+function windowCheck(): ESLint {
+  return new ESLint({
+    cwd: ROOT,
+    overrideConfigFile: true,
+    overrideConfig: defineConfig({
+      files: ['**/*.ts'],
+      languageOptions: { parser: tseslint.parser },
+      plugins: { windows: { rules: { hidden: hiddenWindows } } },
+      rules: { 'windows/hidden': 'error' },
+    }),
+  });
+}
+
+test('every Bun.spawn and Bun.spawnSync under scripts/ passes windowsHide: true, and nothing there starts a process another way', async () => {
+  hiddenStarts = [];
+
+  const results = await windowCheck().lintFiles(['scripts/*.ts']);
+
+  const reported = results.flatMap((result) =>
+    result.messages.map((message) => `${basename(result.filePath)}:${String(message.line)} ${message.message}`),
+  );
+  expect(reported).toEqual([]);
+  // The check read the files that start processes, so its silence is no empty read.
+  expect(hiddenStarts.map((file) => basename(file))).toEqual(
+    expect.arrayContaining(['run.ts', 'shellcheck.ts']) as string[],
+  );
+});
+
+test.each([
+  ['an object carrying windowsHide: true', "Bun.spawn({ cmd: ['x'], windowsHide: true });\n", []],
+  ['a sync start carrying it', "Bun.spawnSync({ cmd: ['x'], windowsHide: true });\n", []],
+  ['options beside an argument list', "Bun.spawn(['x'], { windowsHide: true });\n", []],
+  ['the key in quotes', "Bun.spawn({ cmd: ['x'], 'windowsHide': true });\n", []],
+  ['no options', "Bun.spawn(['x']);\n", ['shown']],
+  ['options without the key', "Bun.spawnSync({ cmd: ['x'] });\n", ['shown']],
+  ['the key set false', "Bun.spawn({ cmd: ['x'], windowsHide: false });\n", ['shown']],
+  [
+    'the key read from a variable',
+    "declare const hide: boolean;\nBun.spawn({ cmd: ['x'], windowsHide: hide });\n",
+    ['shown'],
+  ],
+  [
+    'options from a variable',
+    'declare const options: Bun.SpawnOptions.OptionsObject;\nBun.spawn(options);\n',
+    ['shown'],
+  ],
+  ['the key nested in env', "Bun.spawn({ cmd: ['x'], env: { windowsHide: 'true' } });\n", ['shown']],
+  ['a computed name without the key', "Bun['spawn']({ cmd: ['x'] });\n", ['shown']],
+  ['an alias', 'const start = Bun.spawn;\n', ['reached']],
+  ['a destructuring', 'const { spawnSync } = Bun;\n', ['reached']],
+  ["Bun's shell", 'await Bun.$`ls`;\n', ['reached']],
+  ['spawn imported from bun', "import { spawn } from 'bun';\n", ['reached']],
+  ['$ imported from bun', "import { $ } from 'bun';\n", ['reached']],
+  ['node:child_process', "import { execFile } from 'node:child_process';\n", ['reached']],
+  ['child_process', "import cp from 'child_process';\n", ['reached']],
+])('a start written as %s is judged', async (_label: string, text: string, expected: readonly string[]) => {
+  const [result] = await windowCheck().lintText(text, { filePath: join(ROOT, 'scripts', 'window-probe.ts') });
+
+  const kinds: string[] = (result?.messages ?? []).map((message) => message.messageId ?? message.message);
+  expect(kinds).toEqual([...expected]);
 });
 
 /* ///// Name folding ///// */
@@ -447,7 +612,7 @@ test.each(PLANTED_CASES)(
     // The fixture holds only when a bare spawn, with the variable that hides
     // the working directory absent as on a runner, starts the planted file.
     expect(spellings(process.env, 'NoDefaultCurrentDirectoryInExePath')).toEqual([]);
-    Bun.spawnSync({ cmd: [name, 'probe'], cwd, env: { ...process.env }, timeout: PROBE_MS });
+    Bun.spawnSync({ cmd: [name, 'probe'], cwd, env: { ...process.env }, timeout: PROBE_MS, windowsHide: true });
     expect(started()).toEqual([`planted-${name}`]);
     standIns.clear();
 
@@ -621,7 +786,12 @@ test.each([
       Object.entries(process.env).filter(([name]) => !name.toUpperCase().startsWith('GATE_ENV_')),
     );
     const read = (flags: readonly string[]): string =>
-      Bun.spawnSync({ cmd: [process.execPath, ...flags, 'print.ts'], cwd, env: { ...env, NODE_ENV: mode } })
+      Bun.spawnSync({
+        cmd: [process.execPath, ...flags, 'print.ts'],
+        cwd,
+        env: { ...env, NODE_ENV: mode },
+        windowsHide: true,
+      })
         .stdout.toString()
         .trim();
 

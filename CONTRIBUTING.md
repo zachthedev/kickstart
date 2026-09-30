@@ -141,6 +141,10 @@ apply. -->
 - A comment explains why the code is shaped as it is. What changed goes in the commit message.
 - Every process a gate script under `scripts/` starts goes through `scripts/run.ts`, so every one starts from
   `PATH` alone, with no shell. A `package.json` script or a hook starts its tool itself.
+- Every `Bun.spawn` and `Bun.spawnSync` under `scripts/`, the tests' own included, passes `windowsHide: true`. On
+  Windows a console program opens a console window of its own when the process starting it has no console, as
+  under an agent or a service. A case in `scripts/run.test.ts` refuses a start without it, and a start made another
+  way: an alias of either, `Bun.$`, or `node:child_process`.
 - A message that quotes input, such as a path or a value read from a file, JSON-quotes it. A newline or a carriage
   return in input then stays inside one line, where it cannot start a workflow command in a CI log.
 - ESLint lints and Prettier formats. An ESLint rule that is wrong for this code is turned off in
