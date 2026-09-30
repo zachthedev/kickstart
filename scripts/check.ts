@@ -52,6 +52,7 @@ import {
   compilerFinding,
   files,
   ignoreCommentFindings,
+  type LintExemption,
   lintedAsWritten,
   lintedWithoutComments,
   taploFound,
@@ -319,20 +320,31 @@ function isAbsolutePath(line: string): boolean {
 
 /* ///// lint ///// */
 
+/**
+ * The tracked JavaScript and TypeScript files ESLint does not lint that the
+ * lint row passes, each with the row that holds it. A file belongs here only
+ * when another row holds its every byte, as a row that regenerates a
+ * generated file and diffs it against the index does. The row refuses an
+ * exemption that exempts nothing or gives no reason in words.
+ */
+const LINT_EXEMPTIONS: readonly LintExemption[] = [];
+
 // Two passes, each with the json formatter, which names every file ESLint
 // linted, so the row counts them and prints each problem itself. The first
 // reads every comment and allows no warning, and the row fails on a tracked
-// JavaScript or TypeScript file it did not lint. The second reads no comment
-// as a directive or as configuration, and the row refuses every report there
-// from a rule that reads comments, over the same files. rows.ts holds what the
-// row concludes from each. --config names the one config, so ESLint runs no
-// eslint.config.* nearer a file than the root.
+// JavaScript or TypeScript file it did not lint, unless LINT_EXEMPTIONS names
+// it. The second reads no comment as a directive or as configuration, and the
+// row refuses every report there from a rule that reads comments, over the
+// same files. rows.ts holds what the row concludes from each. --config names
+// the one config, so ESLint runs no eslint.config.* nearer a file than the
+// root.
 async function lint(): Promise<string> {
   const eslint = [...jsTool('eslint'), '--config', ESLINT_CONFIG];
   const first = lintedAsWritten(await run([...eslint, '.', '--max-warnings=0', '--format', 'json']));
   const unlinted = unlintedSourceFinding(
     await trackedFiles(),
     new Set(first.map((result) => comparable(result.filePath))),
+    LINT_EXEMPTIONS,
   );
   if (unlinted !== undefined) {
     throw new Error(unlinted);
@@ -653,7 +665,7 @@ const rows: readonly Row[] = [
   {
     name: 'lint',
     checks:
-      'eslint over the tree with eslint.config.ts alone and no warnings allowed, counting the files it linted, every tracked JavaScript or TypeScript file among them, and no gate/visible-reason report a directive turned off, then eslint again over the same files with --no-inline-config and no report from a rule that reads comments',
+      'eslint over the tree with eslint.config.ts alone and no warnings allowed, counting the files it linted, every tracked JavaScript or TypeScript file among them but those LINT_EXEMPTIONS names with the row that holds each, and no gate/visible-reason report a directive turned off, then eslint again over the same files with --no-inline-config and no report from a rule that reads comments',
     check: lint,
     runsCode: true,
   },

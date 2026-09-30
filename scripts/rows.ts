@@ -4,11 +4,13 @@
  * logic every repository's check.ts runs.
  *
  * @remarks
- * The same in every repository of the set. It reads Bun and `node:` built-ins
- * and run.ts alone, so check.ts can import it before the preflight.
+ * The same in every repository of the set. It reads Bun and `node:` built-ins,
+ * run.ts and eslint-plugin.ts alone, and eslint-plugin.ts imports types alone,
+ * so check.ts can import it before the preflight.
  */
 
 import { resolve } from 'node:path';
+import { isVisibleReason } from './eslint-plugin';
 import { describe, type Finished, fold, plain, quote } from './run';
 
 /* ///// Paths and counts ///// */
@@ -79,9 +81,47 @@ export function compilerFinding(printed: string, spec: string): string | undefin
 const LINTED_SOURCE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
 
 /**
+ * A tracked JavaScript or TypeScript file ESLint does not lint, which the lint
+ * row passes because another row holds it.
+ */
+export interface LintExemption {
+  /** The one file, by its path from the root, as `git ls-files` names it. A pattern names no file. */
+  readonly path: string;
+  /** The row that holds the file, and how, in words. */
+  readonly reason: string;
+}
+
+/**
+ * The findings against `exemption`: that it exempts nothing, and that it gives
+ * no reason. `file` is the tracked file whose path equals the exemption's
+ * through {@link comparable}, or undefined when none does, and `linted` holds
+ * each file the first pass reported.
+ */
+function exemptionFindings(exemption: LintExemption, file: string | undefined, linted: ReadonlySet<string>): string[] {
+  const named = `the lint exemption for ${quote(exemption.path)} in scripts/check.ts`;
+  const findings: string[] = [];
+  if (file === undefined) {
+    findings.push(
+      `${named} names no tracked file, so it exempts nothing. Name one tracked file by its path from the root, or remove the exemption`,
+    );
+  } else if (!LINTED_SOURCE.test(fold(file))) {
+    findings.push(`${named} names no JavaScript or TypeScript file, so it exempts nothing. Remove the exemption`);
+  } else if (linted.has(comparable(file))) {
+    findings.push(`${named} names a file eslint lints, so it exempts nothing. Remove the exemption`);
+  }
+  if (!isVisibleReason(exemption.reason)) {
+    findings.push(
+      `${named} gives no reason holding a letter or a digit once the characters that print nothing are removed. Name the row that holds the file, in words`,
+    );
+  }
+  return findings;
+}
+
+/**
  * A finding naming every tracked JavaScript or TypeScript file in `tracked`
- * that ESLint did not lint, or undefined when it linted every one. `linted`
- * holds each file the lint row's first pass reported, through
+ * that ESLint did not lint and no entry of `exempt` names, and every entry
+ * that exempts nothing or gives no reason, or undefined when there is none.
+ * `linted` holds each file the lint row's first pass reported, through
  * {@link comparable}.
  *
  * @remarks
@@ -89,14 +129,32 @@ const LINTED_SOURCE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
  * covers, and it names no file it passes over. An ignore meant for untracked
  * output, such as `dist/**`, hides a file someone tracks there too. A `files`
  * pattern that misses an extension, such as `.jsx`, or a case of one, such as
- * `.TS`, hides every file ending in it.
+ * `.TS`, hides every file ending in it. An exemption names the one tracked
+ * file whose path equals its own through {@link comparable}, so a pattern
+ * names none. An exemption that names no tracked JavaScript or TypeScript
+ * file, or one the first pass linted, exempts nothing and is refused, so none
+ * outlives the file it names. So is one whose reason fails
+ * {@link isVisibleReason}, the test a waiver's reason meets.
  */
-export function unlintedSourceFinding(tracked: readonly string[], linted: ReadonlySet<string>): string | undefined {
-  const unlinted = tracked.filter((path) => LINTED_SOURCE.test(fold(path)) && !linted.has(comparable(path)));
-  if (unlinted.length === 0) {
-    return undefined;
-  }
-  return `eslint lints no ${unlinted.map((path) => quote(path)).join(', ')}, so no lint rule reads ${unlinted.length === 1 ? 'it' : 'them'}. Match each with a files pattern in eslint.config.ts and no ignore, or stop tracking it`;
+export function unlintedSourceFinding(
+  tracked: readonly string[],
+  linted: ReadonlySet<string>,
+  exempt: readonly LintExemption[],
+): string | undefined {
+  const held = new Set(exempt.map((exemption) => comparable(exemption.path)));
+  const unlinted = tracked.filter(
+    (path) => LINTED_SOURCE.test(fold(path)) && !linted.has(comparable(path)) && !held.has(comparable(path)),
+  );
+  const byKey = new Map(tracked.map((path) => [comparable(path), path]));
+  const findings = [
+    ...(unlinted.length === 0
+      ? []
+      : [
+          `eslint lints no ${unlinted.map((path) => quote(path)).join(', ')}, so no lint rule reads ${unlinted.length === 1 ? 'it' : 'them'}. Match each with a files pattern in eslint.config.ts and no ignore, or stop tracking it. A file another row holds takes a lint exemption in scripts/check.ts instead, naming that row`,
+        ]),
+    ...exempt.flatMap((exemption) => exemptionFindings(exemption, byKey.get(comparable(exemption.path)), linted)),
+  ];
+  return findings.length === 0 ? undefined : findings.join('\n');
 }
 
 /* ///// What ESLint reports ///// */

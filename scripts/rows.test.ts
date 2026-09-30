@@ -10,6 +10,7 @@ import {
   comparable,
   compilerFinding,
   ignoreCommentFindings,
+  type LintExemption,
   lintedAsWritten,
   lintedWithoutComments,
   taploFound,
@@ -28,11 +29,15 @@ function carrying(fragment: string): string {
   return expect.stringContaining(fragment) as string;
 }
 
-// Escape characters spelled from their code points, so none is written into
-// this file literally.
+// Escape characters and characters that print nothing, spelled from their
+// code points, so none is written into this file literally.
 const ESC = String.fromCharCode(0x1b);
 const CSI = String.fromCharCode(0x9b);
 const BEL = String.fromCharCode(0x07);
+const WORD_JOINER = String.fromCodePoint(0x2060);
+const SOFT_HYPHEN = String.fromCodePoint(0xad);
+const HANGUL_FILLER = String.fromCodePoint(0x3164);
+const BRAILLE_BLANK = String.fromCodePoint(0x2800);
 
 /** `text` wrapped in the color codes a terminal-aware tool prints around a word. */
 function colored(text: string): string {
@@ -272,18 +277,22 @@ test('every tracked TypeScript file read yields nothing', () => {
 
 /* ///// Lint coverage ///// */
 
+/** What the lint row says to do about a tracked file ESLint did not lint, after naming it. */
+const LINT_OR_EXEMPT =
+  'Match each with a files pattern in eslint.config.ts and no ignore, or stop tracking it. A file another row holds takes a lint exemption in scripts/check.ts instead, naming that row';
+
 test('a tracked file ESLint did not lint is named with why and what to do, and one it linted is not', () => {
   const linted = new Set([comparable('src/a.ts')]);
 
-  expect(unlintedSourceFinding(['src/a.ts', 'dist/b.ts', 'README.md'], linted)).toBe(
-    'eslint lints no "dist/b.ts", so no lint rule reads it. Match each with a files pattern in eslint.config.ts and no ignore, or stop tracking it',
+  expect(unlintedSourceFinding(['src/a.ts', 'dist/b.ts', 'README.md'], linted, [])).toBe(
+    `eslint lints no "dist/b.ts", so no lint rule reads it. ${LINT_OR_EXEMPT}`,
   );
 });
 
 test('several files ESLint did not lint are named together', () => {
-  expect(unlintedSourceFinding(['coverage/x.js', 'src/c.jsx', 'src/a.ts'], new Set([comparable('src/a.ts')]))).toEqual(
-    carrying('eslint lints no "coverage/x.js", "src/c.jsx", so no lint rule reads them.'),
-  );
+  expect(
+    unlintedSourceFinding(['coverage/x.js', 'src/c.jsx', 'src/a.ts'], new Set([comparable('src/a.ts')]), []),
+  ).toEqual(carrying('eslint lints no "coverage/x.js", "src/c.jsx", so no lint rule reads them.'));
 });
 
 // Every extension Bun runs as a module, in any case, since Bun reads one in any
@@ -303,13 +312,13 @@ test.each([
   'x.Jsx',
   '.wrangler/probe.ts',
 ])('%p counts as a source ESLint lints', (path: string) => {
-  expect(unlintedSourceFinding([path], new Set())).toEqual(carrying(`eslint lints no ${JSON.stringify(path)}`));
+  expect(unlintedSourceFinding([path], new Set(), [])).toEqual(carrying(`eslint lints no ${JSON.stringify(path)}`));
 });
 
 test.each(['x.json', 'x.md', 'x.mjsx', 'x.ts.txt', 'x.tsxx', 'ts', 'src/jsx', 'x.yml'])(
   '%p names no source ESLint lints and yields nothing',
   (path: string) => {
-    expect(unlintedSourceFinding([path], new Set())).toBeUndefined();
+    expect(unlintedSourceFinding([path], new Set(), [])).toBeUndefined();
   },
 );
 
@@ -318,8 +327,153 @@ test('every tracked source linted yields nothing', () => {
     unlintedSourceFinding(
       ['src/a.ts', 'commitlint.config.js', 'docs/b.md'],
       new Set(['src/a.ts', 'commitlint.config.js'].map((path) => comparable(path))),
+      [],
     ),
   ).toBeUndefined();
+});
+
+// A lint exemption passes the one tracked file another row holds. It names
+// that file exactly, compared through comparable, so a pattern or a directory
+// names none. One that exempts nothing, or gives no reason in words, is a
+// finding of its own.
+
+/** A generated file another row holds, which ESLint does not lint. */
+const GENERATED = 'gen/types.d.ts';
+
+/** A reason naming the row that holds {@link GENERATED}. */
+const HELD_BY = 'the types row regenerates it and diffs it against the index';
+
+/** The lint row's finding against an exemption for `path` that names no tracked file. */
+const namesNoFile = (path: string): string =>
+  `the lint exemption for ${JSON.stringify(path)} in scripts/check.ts names no tracked file, so it exempts nothing. Name one tracked file by its path from the root, or remove the exemption`;
+
+/** The lint row's finding against an exemption for `path` that names a file the first pass linted. */
+const namesLinted = (path: string): string =>
+  `the lint exemption for ${JSON.stringify(path)} in scripts/check.ts names a file eslint lints, so it exempts nothing. Remove the exemption`;
+
+/** The lint row's finding against an exemption for `path` whose reason holds no letter or digit. */
+const reasonless = (path: string): string =>
+  `the lint exemption for ${JSON.stringify(path)} in scripts/check.ts gives no reason holding a letter or a digit once the characters that print nothing are removed. Name the row that holds the file, in words`;
+
+test('a file an exemption names passes, and every other file ESLint did not lint is still named', () => {
+  expect(
+    unlintedSourceFinding([GENERATED, 'dist/b.ts', 'src/a.ts'], new Set([comparable('src/a.ts')]), [
+      { path: GENERATED, reason: HELD_BY },
+    ]),
+  ).toBe(`eslint lints no "dist/b.ts", so no lint rule reads it. ${LINT_OR_EXEMPT}`);
+});
+
+test.each([GENERATED, `./${GENERATED}`, 'gen/./types.d.ts', 'gen/sub/../types.d.ts'])(
+  'an exemption naming the file as %p passes it',
+  (path: string) => {
+    expect(
+      unlintedSourceFinding([GENERATED, 'src/a.ts'], new Set([comparable('src/a.ts')]), [{ path, reason: HELD_BY }]),
+    ).toBeUndefined();
+  },
+);
+
+interface ExemptionCase {
+  readonly label: string;
+  readonly tracked: readonly string[];
+  /** The tracked files the first pass reported. */
+  readonly linted: readonly string[];
+  readonly exempt: readonly LintExemption[];
+  /** The whole finding, one line for each problem. */
+  readonly finding: string;
+}
+
+const EXEMPTION_CASES: readonly ExemptionCase[] = [
+  {
+    label: 'an exemption naming a file nobody tracks is refused',
+    tracked: ['src/a.ts'],
+    linted: ['src/a.ts'],
+    exempt: [{ path: GENERATED, reason: HELD_BY }],
+    finding: namesNoFile(GENERATED),
+  },
+  {
+    label: 'an exemption naming a pattern is refused, and the file the pattern matches stays refused',
+    tracked: [GENERATED],
+    linted: [],
+    exempt: [{ path: 'gen/*.d.ts', reason: HELD_BY }],
+    finding: [
+      `eslint lints no "${GENERATED}", so no lint rule reads it. ${LINT_OR_EXEMPT}`,
+      namesNoFile('gen/*.d.ts'),
+    ].join('\n'),
+  },
+  {
+    label: 'an exemption naming the directory is refused, and the file in it stays refused',
+    tracked: [GENERATED],
+    linted: [],
+    exempt: [{ path: 'gen', reason: HELD_BY }],
+    finding: [`eslint lints no "${GENERATED}", so no lint rule reads it. ${LINT_OR_EXEMPT}`, namesNoFile('gen')].join(
+      '\n',
+    ),
+  },
+  {
+    label: 'an exemption naming a file the first pass linted is refused',
+    tracked: ['src/a.ts'],
+    linted: ['src/a.ts'],
+    exempt: [{ path: 'src/a.ts', reason: HELD_BY }],
+    finding: namesLinted('src/a.ts'),
+  },
+  {
+    label: 'an exemption naming a tracked file that is no JavaScript or TypeScript file is refused',
+    tracked: ['README.md', 'src/a.ts'],
+    linted: ['src/a.ts'],
+    exempt: [{ path: 'README.md', reason: HELD_BY }],
+    finding:
+      'the lint exemption for "README.md" in scripts/check.ts names no JavaScript or TypeScript file, so it exempts nothing. Remove the exemption',
+  },
+  {
+    label: 'an exemption naming a file nobody tracks, with no reason, is refused for both',
+    tracked: ['src/a.ts'],
+    linted: ['src/a.ts'],
+    exempt: [{ path: GENERATED, reason: '' }],
+    finding: [namesNoFile(GENERATED), reasonless(GENERATED)].join('\n'),
+  },
+  {
+    label: 'a file ESLint did not lint is named first, then each exemption refused in its order',
+    tracked: [GENERATED, 'dist/b.ts', 'src/a.ts'],
+    linted: ['src/a.ts'],
+    exempt: [
+      { path: 'src/a.ts', reason: HELD_BY },
+      { path: GENERATED, reason: WORD_JOINER },
+    ],
+    finding: [
+      `eslint lints no "dist/b.ts", so no lint rule reads it. ${LINT_OR_EXEMPT}`,
+      namesLinted('src/a.ts'),
+      reasonless(GENERATED),
+    ].join('\n'),
+  },
+];
+
+test.each([...EXEMPTION_CASES])('$label', ({ tracked, linted, exempt, finding }: ExemptionCase) => {
+  expect(unlintedSourceFinding(tracked, new Set(linted.map((path) => comparable(path))), exempt)).toBe(finding);
+});
+
+// The test a waiver's reason meets: a letter or a digit once the characters
+// that print nothing are removed. U+3164 is default-ignorable though Unicode
+// files it as a letter, so the strip comes first. U+2800 prints nothing and is
+// neither default-ignorable nor a letter or digit.
+test.each([
+  ['empty', ''],
+  ['spaces alone', '   '],
+  ['a word joiner alone', WORD_JOINER],
+  ['a soft hyphen alone', SOFT_HYPHEN],
+  ['U+3164 alone, which Unicode files as a letter,', HANGUL_FILLER],
+  ['U+2800 alone', BRAILLE_BLANK],
+  ['symbols alone', '-- ...!'],
+])('an exemption whose reason is %s is refused, and still passes its file', (_label: string, reason: string) => {
+  expect(unlintedSourceFinding([GENERATED], new Set(), [{ path: GENERATED, reason }])).toBe(reasonless(GENERATED));
+});
+
+test.each([
+  ['in words', HELD_BY],
+  ['in words after a word joiner', `${WORD_JOINER}${HELD_BY}`],
+  ['in another script', `${String.fromCodePoint(0x7406)}${String.fromCodePoint(0x7531)}`],
+  ['a number alone', '7'],
+])('an exemption whose reason is %s passes', (_label: string, reason: string) => {
+  expect(unlintedSourceFinding([GENERATED], new Set(), [{ path: GENERATED, reason }])).toBeUndefined();
 });
 
 /* ///// The compiler the typecheck row runs ///// */
@@ -356,9 +510,6 @@ const ROOT = join(import.meta.dir, '..');
 
 /** The file each case's text is linted as. */
 const PROBE = join(ROOT, 'probe.ts');
-
-// Built from its code point, so no invisible character is written into this file.
-const WORD_JOINER = String.fromCodePoint(0x2060);
 
 /**
  * The rules eslint.config.ts sets on a comment, and a rule for a waiver to

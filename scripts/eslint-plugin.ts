@@ -1,6 +1,6 @@
 /**
  * The gate's own ESLint rule, which eslint.config.ts loads as the `gate`
- * plugin.
+ * plugin, and the test it holds a waiver's reason to.
  *
  * @remarks
  * The rule reads the comments ESLint parsed, so a string or a template that
@@ -16,6 +16,15 @@ const IGNORABLE = /\p{Default_Ignorable_Code_Point}/gu;
 
 /** A letter or a digit, in any script. */
 const WORD = /[\p{L}\p{N}]/u;
+
+/**
+ * Whether `reason` holds a letter or a digit once default-ignorable code
+ * points are removed: the test for a waiver's reason, which the rule below
+ * and the lint row's exemptions in rows.ts apply.
+ */
+export function isVisibleReason(reason: string): boolean {
+  return WORD.test(reason.replace(IGNORABLE, ''));
+}
 
 /** What ESLint splits a directive comment's reason from the directive at: two or more hyphens between whitespace. */
 const REASON_SEPARATOR = /\s-{2,}\s/u;
@@ -95,7 +104,7 @@ export const visibleReason: Rule.RuleModule = {
       Program(): void {
         for (const comment of context.sourceCode.getAllComments()) {
           const waiver = waiverIn(comment.type, comment.value);
-          if (waiver !== undefined && !WORD.test(waiver.reason.replace(IGNORABLE, ''))) {
+          if (waiver !== undefined && !isVisibleReason(waiver.reason)) {
             context.report({ node: comment, messageId: 'invisible', data: { directive: waiver.directive } });
           }
         }
