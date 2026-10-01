@@ -347,7 +347,8 @@ Every git the gate starts runs with no system or global config and nothing inher
 The shared `commits` and `workflows` jobs refuse, before a merge, the files that run code or waive a check before
 any gate row reads them. A pull request cannot edit those jobs at the pin `ci.yml` calls, so the gate does not
 repeat them. Code-owner review of `.github/workflows/` is the control on a change to that pin, and on a change to
-the job that runs the gate. The shared jobs refuse:
+the job that runs the gate. Both jobs run their refusals on every pull request, on every push to `main` and daily
+from `audit.yml`. The `commits` job runs its commitlint steps on a pull request alone. The shared jobs refuse:
 
 - a tracked `node_modules`, or a tracked path under one, and every tracked symbolic link, since `bun install` keeps
   one as it finds it and Bun reads through it to a file `bun.lock` never named;
@@ -365,8 +366,14 @@ the job that runs the gate. The shared jobs refuse:
   commitlint;
 - a `bunfig.toml` holding any key but `[install] minimumReleaseAge`;
 - `paths` or `baseUrl` in a tracked `tsconfig.json` or `jsconfig.json` or in a file its `extends` chain reads;
+- a tree that does not track `.github/renovate.json` as a file, since without it Renovate reads a root
+  `renovate.json`, a `.renovaterc` or a `package.json` `renovate` key in its place;
+- a `packageManager` other than `bun@X.Y.Z`, and a root `.node-version` other than one `X.Y.Z` line, since
+  setup-bun and setup-node resolve a range or a name such as `latest` when the job runs, past the cooldown;
 - a `zizmor: ignore[...]` comment in a tracked file under `.github`, since a waiver is an entry in
   `.github/zizmor.yml`;
+- a key repeated in one mapping of `.github/zizmor.yml`, an anchor, or a second document, since zizmor keeps the
+  last copy of a repeated audit and a later copy can turn off an audit the first configures;
 - a job passing `secrets: inherit` to anything but a reusable workflow of `zachthedev/.github`, and a
   `secrets-inherit` waiver that names a position or a file holding no such job, so no waiver outlives its job;
 - a root file named like a program the gate, its hooks or an install start (`bun`, `bunx`, `gh`, `git`, `mise` or
@@ -389,13 +396,15 @@ find a file by its extension. Bun also runs a file with no extension as TypeScri
 The `tools` row reads `mise.toml` and `mise.lock` against the expectations in `scripts/tools.ts`, and installs
 from the lockfile only after that read passes. `mise.toml` holds `[tools]`, `[tool_config]` and `[settings]`
 alone, and the last two equal the values in `scripts/tools.ts` exactly, because mise runs a `[hooks]`, `[env]` or
-`[vars]` table on install. Every key of `mise.lock` is one `scripts/tools.ts` names. The row refuses every other
-file mise reads as config or a lockfile in the root, such as `mise.local.toml`, `.tool-versions` or `.miserc.toml`,
-because mise merges each one, and a lockfile beside it, over `mise.lock`. It refuses a link at the root or under
-`.config`, `.mise` or `mise`. Every mise command the gate starts carries an environment built from a short list:
-the temporary directory, the Unix home, a proxy, the Windows folders the system reports, and the gate's own mise
-settings. No other variable reaches mise, so a personal mise setting never changes the gate. `mise.lock` pins
-`linux-x64`, `macos-arm64` and `windows-x64`, and a contributor on another platform relocks in a pull request.
+`[vars]` table on install. Each `[tools]` key is a tool `scripts/tools.ts` expects, spelled exactly, since mise
+reads options written in brackets after a tool's name, `postinstall` among them. Every key of `mise.lock` is one
+`scripts/tools.ts` names. The row refuses every other file mise reads as config or a lockfile in the root, such as
+`mise.local.toml`, `.tool-versions` or `.miserc.toml`, because mise merges each one, and a lockfile beside it, over
+`mise.lock`. It refuses a link at the root or under `.config`, `.mise` or `mise`. Every mise command the gate
+starts carries an environment built from a short list: the temporary directory, the Unix home, a proxy, the
+Windows folders the system reports, and the gate's own mise settings. No other variable reaches mise, so a personal
+mise setting never changes the gate. `mise.lock` pins `linux-x64`, `macos-arm64` and `windows-x64`, and a
+contributor on another platform relocks in a pull request.
 
 In `bun run check`, the `workflows` row runs zizmor online when `gh auth token` answers within five seconds,
 because some of its audits read the pinned actions' repositories. gh answers from `GH_TOKEN`, `GITHUB_TOKEN` or its
