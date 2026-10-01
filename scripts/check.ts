@@ -18,9 +18,8 @@
  * gate refuses to run beside a config a tool would read in place of the one the
  * gate names, a project config outside the named paths, a node_modules below
  * the root, anything that would steer how Bun resolves the gate's own imports,
- * a workflow the workflows row would not read, or a composite action outside
- * .github/actions/. No config's text is held: code-owner review is the control
- * on a change to one. The tracked files that run code or waive a check before
+ * or a workflow the workflows row would not read. No config's text is held:
+ * code-owner review is the control on a change to one. The tracked files that run code or waive a check before
  * any row reads them, such as an env file, a patchedDependencies key, a
  * repeated JSON key, a bunfig.toml preload or an inline zizmor waiver, are
  * refused before a merge by the shared commits and workflows jobs. A pull
