@@ -332,12 +332,7 @@ the gate on your machine agrees with CI:
   `node_modules` under `scripts/`, since Bun resolves the gate's imports through them;
 - a tracked workflow whose path is not `.github/workflows/<name>.yml` exactly, since actionlint and zizmor read that
   spelling alone, a tracked workflow whose `shell:` is not `bash`, `sh` or `pwsh`, and one the gate cannot read as
-  YAML;
-- a tracked composite action, an `action.yml` or `action.yaml` in any case, outside `.github/actions/` in that exact
-  spelling, or under it named in another case, such as `ACTION.YML`, which zizmor never reads and a case-insensitive
-  runner opens. zizmor reads `.github` alone, in the `workflows` row and in the shared `workflows` job, while
-  `uses: ./<path>` runs an action from anywhere in the checkout, so an action at `tools/x` or under a `.GitHub`
-  would run with no audit.
+  YAML.
 
 Each name is compared with its case folded, so a case variant of a refused name is refused too. The first check
 names the work tree through `git rev-parse --show-toplevel` and refuses one other than this checkout: git passes
@@ -374,6 +369,11 @@ from `audit.yml`. The `commits` job runs its commitlint steps on a pull request 
   `.github/zizmor.yml`;
 - a key repeated in one mapping of `.github/zizmor.yml`, an anchor, or a second document, since zizmor keeps the
   last copy of a repeated audit and a later copy can turn off an audit the first configures;
+- a tracked composite action, an `action.yml` or `action.yaml` in any case, outside `.github/actions/` in that exact
+  spelling, or under it named in another case, such as `ACTION.YML`. zizmor reads `.github` alone, in the
+  `workflows` row and in the `workflows` job. `uses: ./<path>` runs an action from anywhere in the checkout, so one
+  at `tools/x` or under a `.GitHub` would run with no audit. A case-insensitive runner opens `ACTION.YML` for
+  `uses:`, and zizmor never reads it;
 - a job passing `secrets: inherit` to anything but a reusable workflow of `zachthedev/.github`, and a
   `secrets-inherit` waiver that names a position or a file holding no such job, so no waiver outlives its job;
 - a root file named like a program the gate, its hooks or an install start (`bun`, `bunx`, `gh`, `git`, `mise` or
