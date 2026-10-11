@@ -357,7 +357,16 @@ async function readAll(stream: unknown, stop: Promise<void>): Promise<string> {
  * {@link searchedDirectories} alone, so a program it starts by name resolves
  * outside the repository too, gets every {@link PROXY_NAMES} value the gate
  * can read, and gets {@link COLORLESS} and goes without {@link WITHHELD},
- * in every spelling, unless `env` names the same variables.
+ * in every spelling, unless `env` names the same variables. On Linux and
+ * macOS its PWD names the directory it starts in, spelled as the gate spells
+ * its own working directory, whatever `env` says in any spelling, and a PWD
+ * that `env` names in another spelling goes too. Go's standard library reads
+ * the working directory from PWD there whenever PWD names that directory. The
+ * native tsc is a Go program, and the typecheck row compares each path it
+ * lists against the gate's own spelling. On Windows it gets no PWD in any
+ * spelling: no native program reads one, and Git for Windows' bash keeps a
+ * PWD in Windows form that names its own folder, where its pwd then prints
+ * mixed separators.
  *
  * @param cmd - The program and its arguments, the program first
  * @param env - Variables added to the gate's own environment for this process,
@@ -373,7 +382,11 @@ export async function run(
   options: RunOptions = {},
 ): Promise<Finished> {
   const inherit = options.inherit !== false;
-  const given = inherit ? { ...COLORLESS, ...WITHHELD, ...env } : env;
+  const cwd = process.cwd();
+  const pwd = process.platform === 'win32' ? undefined : cwd;
+  // run() alone decides PWD, so the caller's own, in any spelling, goes.
+  const own = Object.fromEntries(Object.entries(env).filter(([name]) => name.toUpperCase() !== 'PWD'));
+  const given = inherit ? { ...COLORLESS, ...WITHHELD, ...own, PWD: pwd } : env;
   const replaced = new Set(Object.keys(given).map((name) => name.toUpperCase()));
   const merged: Record<string, string> = {};
   if (inherit) {
@@ -418,7 +431,7 @@ export async function run(
   try {
     child = Bun.spawn({
       cmd: [path, ...args],
-      cwd: process.cwd(),
+      cwd,
       env: merged,
       stdin: 'ignore',
       stdout: 'pipe',

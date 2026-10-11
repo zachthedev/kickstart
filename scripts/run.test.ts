@@ -169,6 +169,67 @@ test("a child's PATH holds the gate's absolute entries outside the working direc
   expect((env[names[0] ?? 'PATH'] ?? '').split(delimiter).map(norm)).toEqual([norm(standIns.dir)]);
 });
 
+interface PwdCase {
+  readonly label: string;
+  /** Sets the gate's own PWD as the case needs, and returns the variables the start hands run(). */
+  readonly arrange: () => Readonly<Record<string, string>>;
+}
+
+// On Linux and macOS, Go's standard library reads the working directory from
+// PWD whenever PWD names that directory. On Windows no native program reads
+// it, and Git for Windows' bash keeps a PWD in Windows form that names its own
+// folder, so there a child gets none. Each case starts the recorder itself,
+// since a POSIX shell launcher would reset a PWD that names another directory.
+const PWD_CASES: readonly PwdCase[] = [
+  { label: 'unset', arrange: () => ({}) },
+  {
+    label: 'naming another directory',
+    arrange: () => {
+      process.env['PWD'] = besideDir('-elsewhere');
+      return {};
+    },
+  },
+  {
+    label: 'naming the working directory through a link, as a shell leaves it after cd through one',
+    arrange: () => {
+      const link = `${cwd}-link`;
+      symlinkSync(cwd, link, WINDOWS ? 'junction' : 'dir');
+      beside.push(link);
+      process.env['PWD'] = link;
+      return {};
+    },
+  },
+  {
+    label: 'in another spelling, naming another directory',
+    arrange: () => {
+      process.env['Pwd'] = besideDir('-spelled');
+      return {};
+    },
+  },
+  {
+    label: "unset, and the start's own variables naming another directory",
+    arrange: () => ({ PWD: besideDir('-given') }),
+  },
+  {
+    label: "unset, and the start's own variables naming other directories as Pwd and as pwd",
+    arrange: () => ({ Pwd: besideDir('-given-mixed'), pwd: besideDir('-given-lower') }),
+  },
+];
+
+test.each([...PWD_CASES])(
+  "a child that inherits gets PWD naming the directory it starts in, as the gate spells it, on Linux and macOS, and no PWD on Windows, with the gate's PWD $label",
+  async ({ arrange }: PwdCase) => {
+    const given = arrange();
+
+    await run(standIns.direct('pwd'), given);
+
+    const [call] = standIns.calls();
+    const env = call?.env ?? {};
+    expect(spellings(env, 'PWD').map((name) => [name, env[name]])).toEqual(WINDOWS ? [] : [['PWD', process.cwd()]]);
+    expect(realpathSync.native(call?.cwd ?? '')).toBe(realpathSync.native(process.cwd()));
+  },
+);
+
 /* ///// How a process ends ///// */
 
 test('the exit code and stdout come back as the process left them', async () => {
@@ -552,6 +613,20 @@ test.each([...INSIDE])('an absolute entry inside the working directory (%p) is s
   expect(norm(resolveProgram('gh'))).toBe(norm(standIns.path('gh')));
 });
 
+// The case changes in the working directory's own name: the check compares an
+// entry's leading part with the repository root, so a change below the root
+// never reaches it. On a case-sensitive file system the variant names no
+// directory, and the case holds for that reason.
+test('an absolute entry inside the working directory spelled in another case is skipped', () => {
+  const dir = join(cwd, 'node_modules', '.bin');
+  plant(dir, 'gh', 'planted');
+  const variant = join(dirname(cwd), basename(cwd).toUpperCase(), 'node_modules', '.bin');
+  expect(variant).not.toBe(dir);
+  process.env['PATH'] = [variant, standIns.dir].join(delimiter);
+
+  expect(norm(resolveProgram('gh'))).toBe(norm(standIns.path('gh')));
+});
+
 test('an entry beside the working directory whose name shares its prefix is searched', () => {
   const dir = besideDir('-other');
   const path = plant(dir, 'gh', 'beside');
@@ -671,12 +746,16 @@ test.if(WINDOWS)('an unset PATHEXT falls back to .COM;.EXE;.BAT;.CMD', () => {
   expect(resolveProgram('other')).toBeUndefined();
 });
 
-test.if(WINDOWS)('a PATH entry wrapped in double quotes is unwrapped', () => {
+// On Windows cmd.exe reads a PATH entry wrapped in double quotes as the folder
+// inside them, and the resolver does the same. On Linux and macOS a quote is
+// part of a folder's name, so the wrapped entry is no absolute path and the
+// resolver never searches it.
+test('a PATH entry wrapped in double quotes is unwrapped on Windows, and elsewhere stays literal and resolves nothing', () => {
   const dir = besideDir('-a');
   const path = plant(dir, 'gh', 'quoted');
   process.env['PATH'] = `"${dir}"`;
 
-  expect(norm(resolveProgram('gh'))).toBe(norm(path));
+  expect(norm(resolveProgram('gh'))).toBe(WINDOWS ? norm(path) : undefined);
 });
 
 test('a program given as an absolute path is returned unchanged, whether or not it exists', () => {
@@ -746,26 +825,44 @@ const PLACEMENTS: readonly Placement[] = [
   },
 ];
 
-const PLANTED_CASES = PLACEMENTS.filter((placement) => WINDOWS || !placement.windowsOnly).flatMap((placement) =>
-  ['gh', 'git', 'mise'].map((name) => ({ name, placement })),
+interface PlantedCase {
+  readonly name: string;
+  readonly placement: Placement;
+}
+
+/** Each program the gate starts by name, planted in each placement whose `windowsOnly` is `windowsOnly`. */
+function plantedCases(windowsOnly: boolean): PlantedCase[] {
+  return PLACEMENTS.filter((placement) => placement.windowsOnly === windowsOnly).flatMap((placement) =>
+    ['gh', 'git', 'mise'].map((name) => ({ name, placement })),
+  );
+}
+
+/** Plants the program where the case says, proves a bare spawn starts it, and asserts run() starts the PATH one. */
+async function startsThePathProgram({ name, placement }: PlantedCase): Promise<void> {
+  const entry = placement.place(name);
+  process.env['PATH'] = [...(entry === undefined ? [] : [entry]), standIns.dir].join(delimiter);
+  // The fixture holds only when a bare spawn, with the variable that hides
+  // the working directory absent as on a runner, starts the planted file.
+  expect(spellings(process.env, 'NoDefaultCurrentDirectoryInExePath')).toEqual([]);
+  Bun.spawnSync({ cmd: [name, 'probe'], cwd, env: { ...process.env }, timeout: PROBE_MS, windowsHide: true });
+  expect(started()).toEqual([`planted-${name}`]);
+  standIns.clear();
+
+  await run([name, 'probe']);
+
+  expect(started()).toEqual([name]);
+}
+
+test.each(plantedCases(false))(
+  'run() starts the PATH program, never a $name planted $placement.label',
+  startsThePathProgram,
 );
 
-test.each(PLANTED_CASES)(
+// Windows alone searches the working directory ahead of PATH for a bare name,
+// so elsewhere a bare spawn never starts the file these cases plant.
+test.skipIf(!WINDOWS).each(plantedCases(true))(
   'run() starts the PATH program, never a $name planted $placement.label',
-  async ({ name, placement }: { name: string; placement: Placement }) => {
-    const entry = placement.place(name);
-    process.env['PATH'] = [...(entry === undefined ? [] : [entry]), standIns.dir].join(delimiter);
-    // The fixture holds only when a bare spawn, with the variable that hides
-    // the working directory absent as on a runner, starts the planted file.
-    expect(spellings(process.env, 'NoDefaultCurrentDirectoryInExePath')).toEqual([]);
-    Bun.spawnSync({ cmd: [name, 'probe'], cwd, env: { ...process.env }, timeout: PROBE_MS, windowsHide: true });
-    expect(started()).toEqual([`planted-${name}`]);
-    standIns.clear();
-
-    await run([name, 'probe']);
-
-    expect(started()).toEqual([name]);
-  },
+  startsThePathProgram,
 );
 
 /* ///// JavaScript tools through bun x ///// */
@@ -851,18 +948,26 @@ const INSTALLS: readonly InstallCase[] = [
   },
 ];
 
-test.each(INSTALLS.filter((entry) => entry.fileLink !== true || fileLinksAvailable()))(
-  'jsTool with $label',
-  ({ plant, installed }: InstallCase) => {
-    mkdirSync(join(cwd, 'node_modules', '.bin'), { recursive: true });
-    plant(binEntry('prettier'));
+/** Plants what the case says at the entry bun x reads for prettier, and asserts what jsTool answers. */
+function judgesTheInstall({ plant, installed }: InstallCase): void {
+  mkdirSync(join(cwd, 'node_modules', '.bin'), { recursive: true });
+  plant(binEntry('prettier'));
 
-    if (installed) {
-      expect(jsTool('prettier')).toEqual([process.execPath, 'x', '--bun', '--no-install', 'prettier']);
-    } else {
-      expect(() => jsTool('prettier')).toThrow(notInstalled('prettier'));
-    }
-  },
+  if (installed) {
+    expect(jsTool('prettier')).toEqual([process.execPath, 'x', '--bun', '--no-install', 'prettier']);
+  } else {
+    expect(() => jsTool('prettier')).toThrow(notInstalled('prettier'));
+  }
+}
+
+test.each(INSTALLS.filter((entry) => entry.fileLink !== true))('jsTool with $label', judgesTheInstall);
+
+// Windows makes a link to a file only with Developer Mode on or from an
+// elevated shell, which Setup asks for, so these cases skip, and count as
+// skips, where this process cannot make one.
+test.skipIf(!fileLinksAvailable()).each(INSTALLS.filter((entry) => entry.fileLink === true))(
+  'jsTool with $label',
+  judgesTheInstall,
 );
 
 test('jsTool reads the tool named and no other', () => {

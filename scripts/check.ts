@@ -35,6 +35,7 @@ import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
+import { isatty } from 'node:tty';
 import { styleText } from 'node:util';
 import type * as Prettier from 'prettier';
 // Every module imported here reads Bun and node: built-ins alone, so the
@@ -213,6 +214,34 @@ function batches(paths: readonly string[]): string[][] {
 }
 
 /**
+ * Writes `text` and a newline to `stream`, and settles once the stream has
+ * taken all of it.
+ *
+ * @remarks
+ * Every line the gate prints goes through here, in order. Under the pinned
+ * Bun, creating process.stdout turns a piped stdout nonblocking, as measured
+ * on Linux and reported for macOS (oven-sh/bun#36419, fixed by
+ * oven-sh/bun#43868), and console.log then drops whatever a full pipe does
+ * not take. This function's default stream creates process.stdout at the
+ * gate's first line in every run. On Linux and macOS the format row's
+ * in-process Prettier import reads process.stdout.isTTY too, through its
+ * bundled picocolors, unless NO_COLOR, FORCE_COLOR, --color or --no-color
+ * decides first. The stream's own write waits for a full pipe to drain, so a
+ * slow reader, as a CI log is, still gets every line.
+ */
+export function print(text = '', stream: NodeJS.WriteStream = process.stdout): Promise<void> {
+  return new Promise((resolve, reject) => {
+    stream.write(`${text}\n`, (error: Error | null | undefined) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
+/**
  * The variables every bun test the gate starts gets. With CI set, bun test
  * fails a file holding `test.only` rather than running that test alone and
  * leaving the rest out of its count.
@@ -220,13 +249,17 @@ function batches(paths: readonly string[]): string[][] {
 const TEST_ENV: Readonly<Record<string, string>> = { CI: 'true' };
 
 /**
- * How many of the gate's own tests skip on this platform by design: the cases
- * for a behavior only Windows has skip on Linux and macOS, and the cases for
- * one Windows lacks skip there. The scripts:test row fails on any other count,
- * so on Windows it fails where the temporary directory's volume keeps no 8.3
- * short names, since the short-name case skips there too.
+ * How many of the gate's own tests skip on this platform by design. On
+ * Windows, the two cases for a behavior Windows lacks: the executable bit and
+ * a control character in a file name. On Linux and macOS, the eight cases for
+ * a behavior only Windows has: the Shell's known folders, an 8.3 short name,
+ * three PATHEXT cases, and a program planted at the working directory's root
+ * for each of gh, git and mise. The scripts:test row fails on any other count,
+ * so on Windows it also fails where the temporary directory's volume keeps no
+ * 8.3 short names, or where the shell cannot make a link to a file, since the
+ * short-name case and the two file-link cases skip there.
  */
-const SCRIPTS_TEST_SKIPS = process.platform === 'win32' ? 2 : 6;
+const SCRIPTS_TEST_SKIPS = process.platform === 'win32' ? 2 : 8;
 
 /** How many of the repository's own tests skip on this platform by design. The test row fails on any other count. */
 const TEST_SKIPS = 0;
@@ -597,7 +630,7 @@ async function markers(): Promise<string> {
   const top = await topLevel();
   const tracked = await git(['-C', top, 'ls-files', '--error-unmatch', '--', INVENTORY]);
   if (tracked.exitCode === 1) {
-    throw new Error(`${INVENTORY} is not tracked. Regenerate it with bun run markers, then: git add ${INVENTORY}`);
+    throw new Error(`${INVENTORY} is not tracked. Regenerate it with bun run markers, then: git add -- :/${INVENTORY}`);
   }
   if (tracked.exitCode !== 0) {
     throw new Error(`git ls-files --error-unmatch ${describe(tracked)}`);
@@ -620,9 +653,10 @@ async function markers(): Promise<string> {
 // The root scripts directory is left to the scripts:test row.
 async function test(): Promise<string> {
   const finished = await run([BUN, NO_ENV_FILE, 'test', '--coverage', '--path-ignore-patterns=scripts/**'], TEST_ENV);
-  // The report and the coverage table print above the row's line, so they
-  // land in the log rather than in its one-line message.
-  console.log(printable([finished.stdout, finished.stderr].join('\n').trim()));
+  // The report and the coverage table print above the row's line, whole,
+  // since print waits for a full pipe, so they land in the log rather than in
+  // the row's one-line message.
+  await print(printable([finished.stdout, finished.stderr].join('\n').trim()));
   if (finished.exitCode !== 0) {
     throw new Error(`bun test exited ${String(finished.exitCode)}. The report is above`);
   }
@@ -694,7 +728,7 @@ const rows: readonly Row[] = [
 
 /* ///// The run ///// */
 
-const color = process.stdout.isTTY && process.env['NO_COLOR'] === undefined;
+const color = isatty(1) && process.env['NO_COLOR'] === undefined;
 const dim = (text: string): string => (color ? styleText('dim', text) : text);
 const glyph = (ok: boolean): string => (color ? styleText(ok ? 'green' : 'red', ok ? '✓' : '✗') : ok ? '✓' : '✗');
 const width = Math.max(...rows.map((row) => row.name.length));
@@ -762,22 +796,22 @@ export function selectRows(args: readonly string[]): Selection | { readonly refu
 async function main(args: readonly string[]): Promise<number> {
   const selection = selectRows(args);
   if ('refusal' in selection) {
-    console.error(selection.refusal);
+    await print(selection.refusal, process.stderr);
     return 1;
   }
   if (selection.list) {
-    console.log(dim('rows'));
-    console.log();
+    await print(dim('rows'));
+    await print();
     for (const row of rows) {
-      console.log(`  ${row.name.padEnd(width)}  ${row.checks}${row.slow === true ? dim(' (slow)') : ''}`);
+      await print(`  ${row.name.padEnd(width)}  ${row.checks}${row.slow === true ? dim(' (slow)') : ''}`);
     }
     return 0;
   }
 
   const { quick } = selection;
   const selected = selection.rows;
-  console.log(dim(quick ? 'check:quick' : 'check'));
-  console.log();
+  await print(dim(quick ? 'check:quick' : 'check'));
+  await print();
 
   // The preflight refuses a config a row's tool would read in place of the one
   // the row names, so no row runs beside one. It comes before any other
@@ -788,8 +822,8 @@ async function main(args: readonly string[]): Promise<number> {
   const preflight = async (after: string): Promise<boolean> => {
     const refused = [...(await trackedFindings()), ...(await startupFindings())];
     if (refused.length > 0) {
-      console.log(`  ${glyph(false)} ${'preflight'.padEnd(width)}  ${dim(after)}`);
-      console.log(`    ${printable(refused.join('\n')).split('\n').join('\n    ')}`);
+      await print(`  ${glyph(false)} ${'preflight'.padEnd(width)}  ${dim(after)}`);
+      await print(`    ${printable(refused.join('\n')).split('\n').join('\n    ')}`);
     }
     return refused.length === 0;
   };
@@ -801,13 +835,13 @@ async function main(args: readonly string[]): Promise<number> {
     const started = performance.now();
     try {
       const note = await row.check(quick);
-      console.log(
+      await print(
         `  ${glyph(true)} ${row.name.padEnd(width)}  ${dim(seconds(started))}${note === undefined ? '' : `  ${dim(printable(note))}`}`,
       );
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      console.log(`  ${glyph(false)} ${row.name.padEnd(width)}  ${dim(seconds(started))}`);
-      console.log(`    ${printable(message).split('\n').join('\n    ')}`);
+      await print(`  ${glyph(false)} ${row.name.padEnd(width)}  ${dim(seconds(started))}`);
+      await print(`    ${printable(message).split('\n').join('\n    ')}`);
       failures.push(row.name);
     }
     if (
@@ -819,12 +853,12 @@ async function main(args: readonly string[]): Promise<number> {
       break;
     }
   }
-  console.log(`  ${dim('─'.repeat(width + 12))}`);
+  await print(`  ${dim('─'.repeat(width + 12))}`);
   if (failures.length === 0) {
-    console.log(`  ${String(selected.length)} checks passed`);
+    await print(`  ${String(selected.length)} checks passed`);
     return 0;
   }
-  console.log(`  ${String(failures.length)} of ${String(selected.length)} checks failed: ${failures.join(', ')}`);
+  await print(`  ${String(failures.length)} of ${String(selected.length)} checks failed: ${failures.join(', ')}`);
   return 1;
 }
 

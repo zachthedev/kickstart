@@ -20,6 +20,8 @@ export interface Call {
   /** The name the stand-in records itself under. */
   readonly name: string;
   readonly args: readonly string[];
+  /** The directory the stand-in started in. */
+  readonly cwd: string;
   readonly env: Readonly<Record<string, string>>;
 }
 
@@ -33,17 +35,19 @@ export interface Answer {
 /** Whether launchers are cmd.exe scripts rather than shell scripts. */
 export const WINDOWS = process.platform === 'win32';
 
-// Every launcher starts this. It appends the call to calls.jsonl and answers
-// from <name>.json, keyed by the arguments joined with spaces, or `*`. It
-// moves to the temporary directory first: on Windows a kill that reaches the
-// launcher's cmd.exe alone leaves this process running past its case, and a
-// process holding a directory keeps it from being removed.
+// Every launcher starts this. It appends the call, with the directory it
+// started in, to calls.jsonl and answers from <name>.json, keyed by the
+// arguments joined with spaces, or `*`. It moves to the temporary directory
+// before it writes anything: on Windows a kill that reaches the launcher's
+// cmd.exe alone leaves this process running past its case, and a process
+// holding a directory keeps it from being removed.
 const RECORDER = `import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const [dir = '', name = '', ...args] = process.argv.slice(2);
+const cwd = process.cwd();
 process.chdir(tmpdir());
-appendFileSync(join(dir, 'calls.jsonl'), JSON.stringify({ name, args, env: { ...process.env } }) + '\\n');
+appendFileSync(join(dir, 'calls.jsonl'), JSON.stringify({ name, args, cwd, env: { ...process.env } }) + '\\n');
 const control = join(dir, name + '.json');
 const answers = existsSync(control) ? JSON.parse(readFileSync(control, 'utf8')) : {};
 const answer = answers[args.join(' ')] ?? answers['*'] ?? {};
@@ -74,6 +78,18 @@ export class StandIns {
   /** The launcher path for `name` in {@link dir}. */
   path(name: string): string {
     return join(this.dir, launcherName(name));
+  }
+
+  /**
+   * The command that starts the recorder itself under `name`, with no
+   * launcher between the start and the record.
+   *
+   * @remarks
+   * A POSIX shell sets PWD to its own working directory when an inherited PWD
+   * names another, so a case about PWD starts the recorder this way.
+   */
+  direct(name: string): string[] {
+    return [process.execPath, '--no-env-file', join(this.dir, 'recorder.ts'), this.dir, name];
   }
 
   /**

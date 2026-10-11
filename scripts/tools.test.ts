@@ -12,6 +12,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { isolate, spellings, StandIns, WINDOWS } from './stand-ins';
 import { LOCK, PINS, startupFindings } from './startup';
 import { install, lockfileFindings, miseEnvironment, resolve, type Tool, TOOLS, URL_REPLACEMENTS } from './tools';
@@ -903,15 +904,120 @@ test.if(WINDOWS)(
   },
 );
 
-test('the mise environment carries the temporary directory and the proxy the gate has', () => {
-  const temp = WINDOWS ? 'TEMP' : 'TMPDIR';
-  process.env[temp] = join(cwd, 'temp');
-  process.env['HTTPS_PROXY'] = 'http://127.0.0.1:9';
+interface InheritedCase {
+  readonly name: string;
+  /** Where the name reaches mise, for the case's title. */
+  readonly on: string;
+  /** The systems whose mise environment carries the name. */
+  readonly systems: readonly NodeJS.Platform[];
+}
 
-  const env = miseEnvironment();
+/** Linux and macOS, the systems that read a Unix home and TMPDIR. */
+const POSIX: readonly NodeJS.Platform[] = ['linux', 'darwin'];
 
-  expect(env[temp]).toBe(join(cwd, 'temp'));
-  expect(env['HTTPS_PROXY']).toBe('http://127.0.0.1:9');
+/** The proxy variables in both spellings. */
+const PROXY_SPELLINGS: readonly string[] = [
+  'HTTPS_PROXY',
+  'HTTP_PROXY',
+  'NO_PROXY',
+  'https_proxy',
+  'http_proxy',
+  'no_proxy',
+];
+
+// The allow-list, written out here rather than read from tools.ts: the Unix
+// home and the temporary directory on Linux and macOS, both temporary
+// directory names on Windows, and the proxy in both spellings on every system.
+const INHERITED: readonly InheritedCase[] = [
+  { name: 'HOME', on: 'Linux and macOS alone', systems: POSIX },
+  { name: 'TMPDIR', on: 'Linux and macOS alone', systems: POSIX },
+  { name: 'TEMP', on: 'Windows alone', systems: ['win32'] },
+  { name: 'TMP', on: 'Windows alone', systems: ['win32'] },
+  ...PROXY_SPELLINGS.map((name: string): InheritedCase => ({ name, on: 'every system', systems: [...POSIX, 'win32'] })),
+];
+
+/** The module a child Bun imports to print its mise environment. */
+const TOOLS_MODULE: string = pathToFileURL(join(import.meta.dir, 'tools.ts')).href;
+
+/** Every value the cases below gave a variable, for the check that none outlives its case. */
+const GIVEN: string[] = [];
+
+/**
+ * The mise environment of a gate started with `name` set to `value`, read
+ * from a child Bun started that way in the working directory.
+ *
+ * @remarks
+ * The variable never enters this process. Bun keeps a proxy variable a
+ * process writes, even once deleted, in the environment its fetch and its
+ * children read, on Windows and Linux alike, and a later test file's requests
+ * would follow it.
+ *
+ * @throws When the child fails
+ */
+async function miseEnvironmentStartedWith(name: string, value: string): Promise<Record<string, string>> {
+  const child = Bun.spawn({
+    cmd: [
+      process.execPath,
+      '--no-env-file',
+      '--no-install',
+      '-e',
+      `const { miseEnvironment } = await import(${JSON.stringify(TOOLS_MODULE)});\nprocess.stdout.write(JSON.stringify(miseEnvironment()));`,
+    ],
+    cwd: process.cwd(),
+    env: { ...process.env, [name]: value },
+    stdout: 'pipe',
+    stderr: 'pipe',
+    windowsHide: true,
+  });
+  const [stdout, stderr] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
+  const exitCode: number = await child.exited;
+  if (exitCode !== 0) {
+    throw new Error(`the child printing the mise environment exited ${String(exitCode)}: ${stderr}`);
+  }
+  return JSON.parse(stdout) as Record<string, string>;
+}
+
+test.each([...INHERITED])(
+  '$name in the gate environment reaches mise on $on',
+  async ({ name, systems }: InheritedCase) => {
+    // The child runs with the value as its home or temporary directory, so it names one that exists.
+    const value = join(cwd, `value-of-${name}`);
+    mkdirSync(value);
+    GIVEN.push(value);
+
+    const env = await miseEnvironmentStartedWith(name, value);
+
+    if (systems.includes(process.platform)) {
+      expect(env[name]).toBe(value);
+    } else {
+      expect(spellings(env, name)).toEqual([]);
+    }
+  },
+);
+
+// bun test runs a file's cases in order, so this one sees what the cases above left.
+test('no value the cases above gave a variable is left for the cases and files after them', async () => {
+  // What this process reads by name, and what a child started with no env
+  // option inherits, which on Windows is what Bun's fetch reads.
+  const child = Bun.spawn({
+    cmd: [
+      process.execPath,
+      '--no-env-file',
+      '--no-install',
+      '-e',
+      `process.stdout.write(JSON.stringify([...Object.values(process.env), ...${JSON.stringify(PROXY_SPELLINGS)}.map((name) => process.env[name] ?? null)]));`,
+    ],
+    stdout: 'pipe',
+    stderr: 'pipe',
+    windowsHide: true,
+  });
+  const [stdout] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text()]);
+  await child.exited;
+  const inherited = JSON.parse(stdout) as (string | null)[];
+  const read: (string | undefined)[] = PROXY_SPELLINGS.map((name: string) => process.env[name]);
+
+  expect(GIVEN).toHaveLength(INHERITED.length);
+  expect([...read, ...inherited].filter((value) => typeof value === 'string' && GIVEN.includes(value))).toEqual([]);
 });
 
 test('install starts mise install --locked in the mise environment and nothing else', async () => {

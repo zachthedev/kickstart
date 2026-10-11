@@ -13,8 +13,11 @@ The machine needs:
   files through `git ls-files`, and the `markers` row reads the tree through `git grep` and `git diff`.
 - [gh](https://cli.github.com), optional. When `gh auth token` answers, the gate runs zizmor online. Otherwise
   zizmor runs offline and no token is needed.
+- On Windows, the right to make symbolic links. Developer Mode gives it to an unelevated shell, and an elevated
+  shell holds it. Two cases in the gate's own tests make a link to a file. Without the right they skip, and the
+  `scripts:test` row refuses a skip its count does not declare.
 
-These four are every program the gate starts from `PATH`: Bun runs the gate, and the gate starts git, mise and gh
+The list holds every program the gate starts from `PATH`: Bun runs the gate, and the gate starts git, mise and gh
 by name. Every other program it runs is a package under `node_modules/` or a tool `mise which` names.
 
 <!-- TODO(kickstart): add any step your project needs between a fresh clone and a green gate. -->
@@ -191,6 +194,9 @@ apply. -->
 - A test touches no file outside a temporary directory and no network. Anything the code under test reaches in
   the operating system arrives as a parameter, in every case, whether or not the case reaches it today.
   `src/cli.ts` takes its two streams that way.
+- A test sets no proxy variable in its own process, in either spelling. Bun keeps `HTTP_PROXY`, `HTTPS_PROXY` and
+  `NO_PROXY` for its fetch and its children after a delete, on Windows and Linux alike. A case that needs one starts
+  a child process with it.
 
 <!-- TODO(kickstart): name the tests that need a real server, machine or network, and how to run them. -->
 
@@ -198,9 +204,57 @@ No test needs a real service. Every test under `tests/` runs inside the `bun tes
 writes to passed in.
 
 The gate's own tests under `scripts/` start a stand-in, itself a Bun process, in place of every program the gate
-starts, and their `PATH` holds the stand-ins alone. So no case starts your gh, git or mise or reaches the network.
-The suite covers `scripts/rows.ts`, which holds what the rows conclude from their tools' output, and how
-`scripts/check.ts` reads its arguments. What `scripts/check.ts` itself wires together is proven by a break round.
+starts, and their `PATH` holds the stand-ins alone. One case starts the test's own Bun twice behind a pipe of the
+system shell's, `/bin/sh` or `cmd.exe`, so the gate's printing meets a reader that waits. The cases on what reaches
+mise from the gate's environment start the test's own Bun with the variable set, and one more case reads what a
+child inherits. So no case starts your gh, git or mise or reaches the network. The suite covers `scripts/rows.ts`,
+which holds what the rows conclude from their tools' output, and how `scripts/check.ts` reads its arguments. It
+holds `print` to delivering a long report whole through a pipe whose reader waits. One case runs the `markers` row
+against a stand-in git that reports `MARKERS.md` untracked, and holds the row's line to a `git add` that names the file
+from the work tree's top. The rest of what `scripts/check.ts` wires together is proven by a break round.
+
+One case holds the gate's process to printing through `print` alone. It reads `scripts/check.ts` and every repository
+module it reaches through ESLint. It follows imports, exports, `require`, `import.meta.require`, `import x = require`
+and dynamic imports. It also follows `module.require`, `require.main.require`, `getBuiltinModule`, and a
+`createRequire` result called directly or through a const. It takes `getBuiltinModule` imported from `process`, and
+`createRequire` imported from `module`, under any local name. Each names its module with a literal, a template with no
+substitution or a const holding one. It reads a name as the binding ESLint's scope analysis resolves it to where it
+stands. So a parameter, a loop variable or an inner declaration of the same name shadows an outer const, as it does at
+run time, and a type of the same name does not. It reads no literal from an ambient const, one declared with `declare`
+or inside a `declare` module, namespace or global block. Bun erases it, so at run time the name reads a global of that
+name. It resolves each specifier as `Bun.resolveSync` does, through `package.json` `imports`, `tsconfig.json` `paths`
+and index files, and never reads a file under `node_modules`. It takes a file it resolves to inside the repository by
+its extension, as Bun loads it with no import attribute, since the `lint` row refuses every attribute but
+`type: 'json'`. It lints a module ending in `.ts`, `.mts`, `.cts`, `.tsx`, `.js`, `.mjs`, `.cjs` or `.jsx`. It passes a
+`.json`, `.toml` or `.txt` file in any letter case unread, as data Bun parses. It refuses any other file, naming it.
+That covers a module with no extension or with one in upper case, which Bun runs as code and ESLint matches by case. It
+refuses a specifier it cannot read, and one Bun resolves to no built-in module, no package and no file in the
+repository. It refuses every JSX element and fragment in a module it reads. JSX calls the factory, or loads the runtime
+module, that a pragma comment or a `tsconfig.json` names, and the check reads neither.
+
+It refuses `console` and its imports, a `stdout` or `stderr` of `process` or `Bun` and their imports, and a tty
+`WriteStream`. It refuses a destructuring that keeps the rest of `process`, `Bun` or the global object, and an object
+spread of any of them, which copies the same members. It refuses `process.emitWarning`, `process.emit` and
+`process._rawDebug`. A `console` in a type query, as in `type Logger = typeof console`, runs nothing and passes. The
+same `typeof console` in an expression is refused like any other `console`. It judges a module by the name Bun resolves
+it to, so an alias of `node:console` counts as `console`. It reads `{ default as x }` as a default import. It refuses
+descriptor 1 or 2, as a number or a const holding one, as the first argument of a call named `write`, `writeSync`,
+`writev`, `writevSync`, `writeFile`, `writeFileSync`, `appendFile`, `appendFileSync` or `file`. It refuses either as the
+`fd` option of any call or constructor too, set in an object literal, in a const holding one, or in an object spread
+into one. It reads an array literal, or a const holding one, spread into a call's arguments as those arguments. Under
+the pinned Bun, that covers every `node:fs` and `node:fs/promises` write through a descriptor number, and `Bun.write`,
+`Bun.file`, `Bun.connect` and a `node:net` `Socket`. It reads the global object as `globalThis`, `global` or `self`,
+bare or as a member of the global object, as in `globalThis.self`. It reads through `as`, `satisfies`, an angle-bracket
+assertion, a non-null assertion and optional chaining, and through destructuring in declarations, assignments, parameter
+defaults and nested patterns. A nested pattern with a default of its own counts under its key and under its default,
+which stands in for an undefined member. It allows a stream inside `print`, as a stream handed to `print`, and in
+another module's `if (import.meta.main)` branch. It follows no value beyond a const holding a literal and names no
+writer beyond these. So review holds a stream or a load reached through `Reflect`, an alias or any other name. Review
+also holds a warning `util.deprecate` or `util.debuglog` raises, and the globals `alert`, `confirm`, `prompt` and
+`reportError`, which print too. A check by those names would refuse a local of the same name. Review holds code built
+from a string, as `eval` runs it, a member set after its literal, as in `OPTIONS.fd = 1`, and a descriptor an ambient
+const names. The `lint` row's `no-implied-eval` refuses `new Function`. A `with` statement, which reads a member of
+`process` by its bare name, fails the `typecheck` row in TypeScript and the `lint` row's `no-with` in JavaScript.
 
 ## The gate
 
@@ -243,10 +297,23 @@ installs frozen before its gate, and a stale install is yours to refresh ([Setup
 The gate withholds `BUN_OPTIONS` and `SHELLCHECK_OPTS` from every process it starts, in every spelling. Bun reads
 `BUN_OPTIONS` as arguments ahead of its own, where a test name pattern hides tests from a count, and
 `SHELLCHECK_OPTS` reaches ShellCheck through actionlint. Every process gets `NO_COLOR=1` and no `FORCE_COLOR` or
-`CLICOLOR_FORCE`, since Bun colors its test summary under `FORCE_COLOR` whatever `NO_COLOR` says. Every row that
-reads a tool's output strips ANSI color and hyperlink codes before it matches, because a tool can color its output
-on a CI runner alone. Every line the gate prints shows a control character or an invisible mark as its `\u`
-escape, so a job id or path in a tool's output cannot rewrite the lines above it.
+`CLICOLOR_FORCE`, since Bun colors its test summary under `FORCE_COLOR` whatever `NO_COLOR` says. On Linux and
+macOS, every process that inherits the gate's environment gets `PWD` naming the directory it starts in, spelled as
+the gate spells its own. Go's standard library reads the working directory from `PWD` there whenever `PWD` names
+that directory. The native tsc is a Go program, and the `typecheck` row compares each path it lists against the
+gate's own spelling. On Windows such a process gets no `PWD` in any spelling: no native program reads one, and Git
+for Windows' bash keeps a `PWD` in Windows form that names its own folder. Every row that reads a tool's output
+strips ANSI color and hyperlink codes before it matches, because a tool can color its output on a CI runner alone.
+Every line the gate prints shows a control character or an invisible mark as its `\u` escape, so a job id or path in
+a tool's output cannot rewrite the lines above it.
+
+The gate writes every line through its output stream's own write, which waits while a pipe is full. Under the pinned
+Bun, creating `process.stdout` turns a piped stdout nonblocking, as measured on Linux and reported upstream for macOS,
+and `console.log` then drops whatever a full pipe does not take. `print`'s default stream creates `process.stdout` at
+the gate's first line in every run. On Linux and macOS the `format` row's in-process Prettier import reads
+`process.stdout.isTTY` too, through its bundled picocolors, unless `NO_COLOR`, `FORCE_COLOR`, `--color` or
+`--no-color` decides first. A log read through a pipe, as CI's is, would otherwise lose the end of a long report.
+Windows pipes block, so nothing is lost there.
 
 No row has a deadline. CI's gate job sets `timeout-minutes`, which bounds the whole gate there, and Ctrl-C ends a
 local run. `gh auth token` alone keeps a five-second bound, because its answer only decides whether zizmor runs
@@ -619,6 +686,12 @@ A local run that fails or disagrees with CI:
 - On Windows, a `scripts:test` row that skips one test more than it declares can come from the temporary
   directory's volume. The case for a program reached through an 8.3 short name skips where the volume keeps no
   short names. Point `TEMP` at a volume that keeps them.
+- On Windows, a `scripts:test` row that skips two tests more than it declares can come from a shell without the
+  right to make symbolic links. The two cases for a tool installed as a link to a file skip there. Turn on Developer
+  Mode, as [Setup](#setup) says.
+- A gate whose output goes to a reader that closes early, as `| head` does, stops at its next line with a non-zero
+  exit, whatever its rows said. Bun prints the write's EPIPE error as it stops, and exits 1 rather than dying of
+  the pipe's signal. Send the output to a file, or let the reader take all of it.
 
 ## What never happens
 
