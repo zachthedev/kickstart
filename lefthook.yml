@@ -11,6 +11,12 @@
 # CI's gate and commits job decide the merge (CONTRIBUTING.md#safety). When
 # node_modules is gone, lefthook itself is missing and the commit goes
 # through.
+#
+# On Windows, lefthook runs each job as sh -c "<command>" and escapes no quote
+# inside it, so a staged name holding ' reaches the tools mangled: the job
+# fails, or a file on disk named like the mangled name is the one fixed.
+# Upgrade lefthook and drop this note once
+# https://github.com/evilmartians/lefthook/pull/1464 ships.
 
 pre-commit:
   jobs:
