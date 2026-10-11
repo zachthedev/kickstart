@@ -21,15 +21,17 @@ pre-commit:
       glob: '*.{ts,mts,cts,js,mjs,cjs}'
       # --config names the one config, so no eslint.config.* nearer a staged file
       # runs. --no-warn-ignored: a staged file the config's ignores name, such as
-      # a generated one, passes rather than warning past --max-warnings=0.
-      run: bun x --bun --no-install eslint --config eslint.config.ts --fix --max-warnings=0 --no-warn-ignored {staged_files}
+      # a generated one, passes rather than warning past --max-warnings=0. --
+      # ends the options, so a staged file named like a flag is read as a file.
+      run: bun x --bun --no-install eslint --config eslint.config.ts --fix --max-warnings=0 --no-warn-ignored -- {staged_files}
       stage_fixed: true
     # --config names the one config, so no other Prettier config file loads,
     # and --no-editorconfig keeps any .editorconfig from setting an option.
     # --ignore-path names .prettierignore alone, so .gitignore never skips a
-    # staged file.
+    # staged file. -- ends the options, so a staged file named like a flag is
+    # read as a file.
     - name: prettier
-      run: bun x --bun --no-install prettier --config .prettierrc --no-editorconfig --ignore-path .prettierignore --write --ignore-unknown {staged_files}
+      run: bun x --bun --no-install prettier --config .prettierrc --no-editorconfig --ignore-path .prettierignore --write --ignore-unknown -- {staged_files}
       stage_fixed: true
 
 commit-msg:

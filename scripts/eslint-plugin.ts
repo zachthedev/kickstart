@@ -20,11 +20,20 @@ const WORD = /[\p{L}\p{N}]/u;
 /** What ESLint splits a directive comment's reason from the directive at: two or more hyphens between whitespace. */
 const REASON_SEPARATOR = /\s-{2,}\s/u;
 
-/** Every directive ESLint reads from the start of a comment, as ESLint's own pattern lists them. */
-const ESLINT_DIRECTIVE = /^(eslint(?:-env|-enable|-disable(?:(?:-next)?-line)?)?|exported|globals?)(?:\s|$)/u;
+/** A directive's name: the first word of the comment, before its reason. */
+const DIRECTIVE_NAME = /^\S+/u;
 
-/** The directives ESLint reads from a line comment. It reads every other one from a block comment alone. */
-const LINE_DIRECTIVE = /^eslint-disable-(?:next-)?line$/u;
+/** The comments a file holds, as ESLint's SourceCode hands them over. */
+type Comments = ReturnType<Rule.RuleContext['sourceCode']['getAllComments']>;
+
+/**
+ * What the rule reads of ESLint's SourceCode beyond its own type: the
+ * comments ESLint reads as directives, an optional method of the source code
+ * interface ESLint's languages implement.
+ */
+interface DirectiveSource {
+  getInlineConfigNodes?(): Comments;
+}
 
 /**
  * tsc's patterns for a waiver in a line comment's text and on a block
@@ -45,23 +54,40 @@ interface Waiver {
 
 /**
  * The waiver in the comment of `type` whose text is `value`, or undefined
- * when ESLint and tsc read none there.
+ * when ESLint and tsc read none there. `directive` is whether ESLint reads
+ * the comment as a directive.
  *
  * @remarks
  * ESLint splits the reason off first, at the first {@link REASON_SEPARATOR},
  * then reads the directive from what comes before it.
  */
-function waiverIn(type: string, value: string): Waiver | undefined {
+function waiverIn(type: string, value: string, directive: boolean): Waiver | undefined {
   const ts = type === 'Line' ? TS_LINE.exec(value) : TS_BLOCK.exec(value.split(LINE_BREAK).at(-1) ?? '');
   if (ts !== null) {
     return { directive: `@${ts[1] ?? ''}`, reason: ts[2] ?? '' };
   }
-  const separator = REASON_SEPARATOR.exec(value);
-  const directive = ESLINT_DIRECTIVE.exec((separator === null ? value : value.slice(0, separator.index)).trim())?.[1];
-  if (directive === undefined || (type === 'Line' && !LINE_DIRECTIVE.test(directive))) {
+  if (!directive) {
     return undefined;
   }
-  return { directive, reason: separator === null ? '' : value.slice(separator.index + separator[0].length) };
+  const separator = REASON_SEPARATOR.exec(value);
+  const name = DIRECTIVE_NAME.exec((separator === null ? value : value.slice(0, separator.index)).trim())?.[0] ?? '';
+  return { directive: name, reason: separator === null ? '' : value.slice(separator.index + separator[0].length) };
+}
+
+/**
+ * The comments ESLint reads as directives in the file `context` lints.
+ *
+ * @throws When the source code offers no `getInlineConfigNodes`, so which
+ * comments are directives is unknown
+ */
+function directivesIn(context: Rule.RuleContext): ReadonlySet<Comments[number]> {
+  const source: Rule.RuleContext['sourceCode'] & DirectiveSource = context.sourceCode;
+  if (source.getInlineConfigNodes === undefined) {
+    throw new Error(
+      'the source code offers no getInlineConfigNodes, so gate/visible-reason cannot tell which comments ESLint reads as directives',
+    );
+  }
+  return new Set(source.getInlineConfigNodes());
 }
 
 /**
@@ -93,8 +119,9 @@ export const visibleReason: Rule.RuleModule = {
   create(context: Rule.RuleContext): Rule.RuleListener {
     return {
       Program(): void {
+        const directives = directivesIn(context);
         for (const comment of context.sourceCode.getAllComments()) {
-          const waiver = waiverIn(comment.type, comment.value);
+          const waiver = waiverIn(comment.type, comment.value, directives.has(comment));
           if (waiver !== undefined && !WORD.test(waiver.reason.replace(IGNORABLE, ''))) {
             context.report({ node: comment, messageId: 'invisible', data: { directive: waiver.directive } });
           }
