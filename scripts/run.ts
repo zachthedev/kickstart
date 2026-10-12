@@ -467,7 +467,7 @@ export async function run(
 
 /**
  * The whole environment of every git the gate and its scripts start: no
- * system or global config, and nothing else.
+ * system or global config, no replace refs, and nothing else.
  *
  * @remarks
  * A git hook exports `GIT_DIR` and `GIT_INDEX_FILE`, and either points git at
@@ -475,10 +475,14 @@ export async function run(
  * hook would read or write the hook's own. An env file Bun loaded can set any
  * other `GIT_` name. git lists, searches and diffs the tree with none of them,
  * and /dev/null is the spelling Git for Windows reads as an empty file too.
+ * A ref under `refs/replace/` makes git read one object in place of another,
+ * so a replace ref left in a clone would change what a row reads from history
+ * with nothing in the tree showing it. No fetch brings one unasked.
  */
 const GIT_ENVIRONMENT: Readonly<Record<string, string>> = {
   GIT_CONFIG_NOSYSTEM: '1',
   GIT_CONFIG_GLOBAL: '/dev/null',
+  GIT_NO_REPLACE_OBJECTS: '1',
 };
 
 /** Runs git with `args` in {@link GIT_ENVIRONMENT} and nothing inherited. */
