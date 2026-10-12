@@ -980,7 +980,7 @@ test('jsTool reads the tool named and no other', () => {
 
 /* ///// The git environment ///// */
 
-test("git starts with its two config switches and nothing from the caller's environment, in any spelling", async () => {
+test("git starts with its two config switches and replace refs off, and nothing from the caller's environment, in any spelling", async () => {
   process.env['GIT_DIR'] = join(cwd, 'elsewhere');
   process.env['git_index_file'] = join(cwd, 'index');
   process.env['Git_Config_Parameters'] = "'core.fsmonitor=x'";
@@ -993,6 +993,7 @@ test("git starts with its two config switches and nothing from the caller's envi
   const env = calls[0]?.env ?? {};
   expect(env['GIT_CONFIG_NOSYSTEM']).toBe('1');
   expect(env['GIT_CONFIG_GLOBAL']).toBe('/dev/null');
+  expect(env['GIT_NO_REPLACE_OBJECTS']).toBe('1');
   for (const name of ['GIT_DIR', 'GIT_INDEX_FILE', 'GIT_CONFIG_PARAMETERS', 'GATE_DECOY']) {
     expect(spellings(env, name)).toEqual([]);
   }
@@ -1192,7 +1193,7 @@ test('a missing git is a finding', async () => {
   expect(await trackedFindings()).toEqual([carrying('git could not name the work tree it reads: it exited 127')]);
 });
 
-test("the preflight's git starts with its two config switches and nothing from the gate's environment", async () => {
+test("the preflight's git starts with its two config switches and replace refs off, and nothing from the gate's environment", async () => {
   answerGit([]);
   process.env['GIT_DIR'] = join(cwd, 'elsewhere');
   process.env['git_index_file'] = join(cwd, 'index');
@@ -1206,6 +1207,7 @@ test("the preflight's git starts with its two config switches and nothing from t
   for (const { env } of calls) {
     expect(env['GIT_CONFIG_NOSYSTEM']).toBe('1');
     expect(env['GIT_CONFIG_GLOBAL']).toBe('/dev/null');
+    expect(env['GIT_NO_REPLACE_OBJECTS']).toBe('1');
     for (const name of ['GIT_DIR', 'GIT_INDEX_FILE', 'GIT_CONFIG_PARAMETERS', 'GATE_DECOY']) {
       expect(spellings(env, name)).toEqual([]);
     }
