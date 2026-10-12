@@ -41,11 +41,15 @@ const CONFIG = defineConfig(comments.recommended, {
 const eslint = new ESLint({ cwd: ROOT, overrideConfigFile: true, overrideConfig: CONFIG });
 
 /**
- * Every problem ESLint reports over `text` as a TypeScript file, as its line
- * and rule in sorted order, and the gate rule's messages.
+ * Every problem `linter`, the suite's ESLint by default, reports over `text`
+ * as a TypeScript file, as its line and rule in sorted order, and the gate
+ * rule's messages.
  */
-async function problems(text: string): Promise<{ readonly found: string[]; readonly messages: string[] }> {
-  const [result] = await eslint.lintText(text, { filePath: join(ROOT, 'probe.ts') });
+async function problems(
+  text: string,
+  linter: ESLint = eslint,
+): Promise<{ readonly found: string[]; readonly messages: string[] }> {
+  const [result] = await linter.lintText(text, { filePath: join(ROOT, 'probe.ts') });
   const reported = result?.messages ?? [{ line: 0, ruleId: 'no result', message: '' }];
   return {
     found: reported.map((message) => `${String(message.line)} ${message.ruleId ?? 'no rule'}`).sort(),
@@ -177,9 +181,41 @@ test.each([
     'a line comment ESLint reads no directive from',
     `// eslint-disable no-debugger -- ${SOFT_HYPHEN}\nexport const count = 1;\n`,
   ],
+  [
+    'a shebang ESLint reads no directive from',
+    `#!eslint-disable no-debugger -- ${SOFT_HYPHEN}\nexport const count = 1;\n`,
+  ],
   ['prose naming a directive', `// Explains eslint-disable -- ${SOFT_HYPHEN}\nexport const count = 1;\n`],
 ])('%s passes', async (_label: string, text: string) => {
   expect(await problems(text)).toEqual({ found: [], messages: [] });
+});
+
+/** The suite's ESLint with inline config off, as the lint row's second pass runs ESLint. */
+const inlineConfigOff = new ESLint({
+  cwd: ROOT,
+  overrideConfigFile: true,
+  overrideConfig: CONFIG,
+  allowInlineConfig: false,
+});
+
+// The lint row's second pass runs ESLint with inline config off, which applies
+// no directive, so no-debugger reports the line a directive would waive. The
+// gate rule still judges each comment ESLint lists as a directive there.
+test.each([
+  [
+    'a reason that prints nothing is refused',
+    `// eslint-disable-next-line no-debugger -- ${SOFT_HYPHEN}\ndebugger;\n`,
+    ['1 gate/visible-reason', '2 no-debugger'],
+    [refusal('eslint-disable-next-line')],
+  ],
+  [
+    'a reason in words passes',
+    '// eslint-disable-next-line no-debugger -- the reason\ndebugger;\n',
+    ['2 no-debugger'],
+    [],
+  ],
+])('with inline config off, %s', async (_label: string, text: string, found: string[], messages: string[]) => {
+  expect(await problems(text, inlineConfigOff)).toEqual({ found, messages });
 });
 
 /** The repository's own config, loaded once for the cases that lint text under it. */

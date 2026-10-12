@@ -2,7 +2,8 @@
 // and the glob syntax it may not hold.
 
 import { expect, test } from 'bun:test';
-import { searchPattern } from './startup';
+import { fold } from './run';
+import { CONFIG_SEARCH_PATHS, searchPattern } from './startup';
 
 // A config search path holds `*` and literal characters alone. `*` matches a
 // run within one segment, the empty run included, and nothing crosses a `/`.
@@ -38,3 +39,15 @@ test.each([
 ])('searchPattern refuses %p, which holds glob syntax beyond a single *', (glob: string) => {
   expect(() => searchPattern(glob)).toThrow('holds glob syntax beyond a single *');
 });
+
+// The preflight builds each table path into a pattern only when it runs, so a
+// path holding refused syntax stops the gate there. Each one builds here, in
+// a case that names it. It matches its own spelling with every `*` as a
+// letter, folded as the preflight folds a name.
+test.each(CONFIG_SEARCH_PATHS.map((glob) => [glob, fold(glob.replaceAll('*', 'x'))] as const))(
+  'the table path %p builds, and matches %p',
+  (glob: string, spelling: string) => {
+    expect(() => searchPattern(glob)).not.toThrow();
+    expect(searchPattern(glob).match(spelling)).toBe(true);
+  },
+);
