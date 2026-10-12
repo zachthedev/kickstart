@@ -152,6 +152,12 @@ const CONFIG_SEARCHES: readonly ConfigSearch[] = [
 ];
 
 /**
+ * Every path {@link CONFIG_SEARCHES} holds. {@link trackedFindings} builds
+ * each into a pattern only when it runs, so a test builds each one by name.
+ */
+export const CONFIG_SEARCH_PATHS: readonly string[] = CONFIG_SEARCHES.flatMap((search) => search.paths);
+
+/**
  * What Bun.Glob reads as syntax beyond a single `*`: `?`, a class, a brace
  * set, a negation, an escape and `**`. A {@link ConfigSearch} path holds none
  * of them, so each of its characters but `*` stands for itself.
