@@ -1,10 +1,10 @@
 import { expect, setDefaultTimeout, test } from 'bun:test';
 import { join } from 'node:path';
 import comments from '@eslint-community/eslint-plugin-eslint-comments/configs';
-import { ESLint } from 'eslint';
+import { ESLint, type Rule } from 'eslint';
 import { defineConfig } from 'eslint/config';
 import tseslint from 'typescript-eslint';
-import { gatePlugin } from './eslint-plugin';
+import { gatePlugin, visibleReason } from './eslint-plugin';
 
 // Loading typescript-eslint and the repository's config takes seconds on a cold cache.
 setDefaultTimeout(30_000);
@@ -301,3 +301,16 @@ test.each(['src/example.ts', 'scripts/check.ts', 'tests/example.test.ts', 'eslin
     });
   },
 );
+
+// ESLint's own SourceCode offers getInlineConfigNodes, which the type marks
+// optional. A source code without it leaves which comments are directives
+// unknown, so the rule stops the lint rather than judging none of them.
+test('the gate rule refuses to run on a source code that offers no getInlineConfigNodes', () => {
+  const context = {
+    sourceCode: { getAllComments: (): unknown[] => [] },
+    report: (): undefined => undefined,
+  } as unknown as Rule.RuleContext;
+  const listener = visibleReason.create(context);
+
+  expect(() => listener.Program?.(undefined as never)).toThrow('offers no getInlineConfigNodes');
+});

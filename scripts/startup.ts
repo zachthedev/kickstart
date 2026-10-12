@@ -151,13 +151,40 @@ const CONFIG_SEARCHES: readonly ConfigSearch[] = [
   },
 ];
 
-/** `glob`, one of a {@link ConfigSearch}'s paths, as a pattern over a whole folded path. */
-function searchPattern(glob: string): RegExp {
-  const body = glob
-    .split('*')
-    .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
-    .join('[^/]*');
-  return new RegExp(`^${body}$`);
+/**
+ * What Bun.Glob reads as syntax beyond a single `*`: `?`, a class, a brace
+ * set, a negation, an escape and `**`. A {@link ConfigSearch} path holds none
+ * of them, so each of its characters but `*` stands for itself.
+ */
+const GLOB_SYNTAX = /[?[\]{}!\\]|\*\*/;
+
+/** A matcher over a whole folded path. */
+export interface SearchPattern {
+  /** Whether `path` is a name the table path spells. */
+  match(path: string): boolean;
+}
+
+/**
+ * `glob`, one of a {@link ConfigSearch}'s paths, as a matcher over a whole
+ * folded path: `*` is any run within one segment, and a path holding `\`
+ * matches nothing.
+ *
+ * @remarks
+ * On Windows, Bun.Glob reads a `\` in the matched path as a separator, so `a/b`
+ * would match `a\b` there. A table path holds no `\`, so no path holding one is
+ * a name it spells.
+ *
+ * @throws When `glob` holds syntax {@link GLOB_SYNTAX} names, which would give
+ * the path a meaning the table does not state
+ */
+export function searchPattern(glob: string): SearchPattern {
+  if (GLOB_SYNTAX.test(glob)) {
+    throw new Error(
+      `${quote(glob)} holds glob syntax beyond a single *, so it would match other names than it spells. Write the path with * alone`,
+    );
+  }
+  const pattern = new Bun.Glob(glob);
+  return { match: (path: string): boolean => !path.includes('\\') && pattern.match(path) };
 }
 
 /** The names Bun and typescript-eslint read a project's TypeScript options from. */
@@ -361,7 +388,7 @@ export async function trackedFindings(): Promise<string[]> {
       (entry) =>
         (isTracked || entry.personal !== true) &&
         path !== entry.named &&
-        entry.patterns.some((pattern) => pattern.test(folded)),
+        entry.patterns.some((pattern) => pattern.match(folded)),
     );
     if (search !== undefined) {
       const remove = search.personal === true ? 'Remove it from the index with git rm --cached' : 'Remove it';
