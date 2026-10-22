@@ -1,7 +1,7 @@
 /**
- * Stands in for ShellCheck under actionlint's `-shellcheck` flag, so a
- * ShellCheck directive in a workflow script is refused in the text ShellCheck
- * itself reads.
+ * Stands in for ShellCheck under actionlint's `-shellcheck` flag, and for any
+ * gate row that hands it a script on stdin, so a ShellCheck directive in every
+ * script the gate checks is refused in the text ShellCheck itself reads.
  *
  * @remarks
  * The workflows row starts actionlint with `-shellcheck` naming the Bun that
@@ -61,7 +61,7 @@ function directives(script: string): Finding[] {
             endColumn: 1,
             level: 'error' as const,
             code: 0,
-            message: `A ShellCheck directive is refused in a workflow script, so rewrite the script until ShellCheck passes it: ${JSON.stringify(text.trim().slice(0, 200))}`,
+            message: `A ShellCheck directive is refused in every script the gate checks, so rewrite the script until ShellCheck passes it: ${JSON.stringify(text.trim().slice(0, 200))}`,
             fix: null,
           },
         ]
