@@ -269,6 +269,11 @@ export interface RunOptions {
    * passes one, as the gh token read does.
    */
   readonly timeoutMs?: number;
+  /**
+   * The bytes the process reads on standard input, as the ShellCheck stand-in
+   * reads a script. Without them standard input reads nothing.
+   */
+  readonly stdin?: Uint8Array;
 }
 
 /**
@@ -433,7 +438,7 @@ export async function run(
       cmd: [path, ...args],
       cwd,
       env: merged,
-      stdin: 'ignore',
+      stdin: options.stdin ?? 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
       ...(options.timeoutMs === undefined ? {} : { timeout: options.timeoutMs }),

@@ -240,6 +240,22 @@ test('the exit code and stdout come back as the process left them', async () => 
   expect(finished).toMatchObject({ exitCode: 3, stdout: 'printed', heldOpen: false });
 });
 
+test('bytes given as stdin reach the process whole, and without them it reads nothing', async () => {
+  const bytes = new Uint8Array([...new TextEncoder().encode('line one\r\nzwei\n'), 0xff, 0x00]);
+  const echo = [
+    process.execPath,
+    '--no-env-file',
+    '-e',
+    "process.stdout.write(Buffer.from(await Bun.stdin.arrayBuffer()).toString('hex'))",
+  ];
+
+  const given = await run(echo, {}, { stdin: bytes });
+  const none = await run(echo);
+
+  expect(given).toMatchObject({ exitCode: 0, stdout: Buffer.from(bytes).toString('hex'), heldOpen: false });
+  expect(none).toMatchObject({ exitCode: 0, stdout: '', heldOpen: false });
+});
+
 test('a program no PATH entry holds exits 127, saying which and that the working directory is never searched', async () => {
   const finished = await run(['gate-absent-program']);
 
