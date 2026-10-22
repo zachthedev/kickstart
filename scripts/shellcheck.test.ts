@@ -7,7 +7,7 @@ import { isolate, StandIns } from './stand-ins';
 // case gets longer than the runner's five-second default.
 setDefaultTimeout(30_000);
 
-/** The module under test, which actionlint starts once per workflow script. */
+/** The module under test, which the gate starts once per script it checks. */
 const STAND_IN = join(import.meta.dir, 'shellcheck.ts');
 
 /** The running Bun's directory, which every case starts the stand-in in. */
@@ -118,6 +118,11 @@ interface DirectiveCase {
   readonly line: string;
 }
 
+/** The refusal of a directive on `line`, whichever script holds it: a workflow step's or a shell file's. */
+function directiveRefused(line: string): string {
+  return `A ShellCheck directive is refused in every script the gate checks, so rewrite the script until ShellCheck passes it: ${JSON.stringify(line)}`;
+}
+
 // Each line as ShellCheck reads it once YAML is decoded. ShellCheck honors
 // every one but the capitalized word, which the refusal covers too.
 const DIRECTIVES: readonly DirectiveCase[] = [
@@ -150,7 +155,7 @@ test.each([...DIRECTIVES])(
         endColumn: 1,
         level: 'error',
         code: 0,
-        message: expect.stringContaining(`A ShellCheck directive is refused in a workflow script`) as string,
+        message: directiveRefused(line),
         fix: null,
       },
     ]);
