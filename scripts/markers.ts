@@ -103,9 +103,10 @@ function render(found: ReadonlyMap<string, number>): string {
     // git grep exits 128 on an error, such as a run from inside .git. The exit
     // is captured with ||, so the test decides the status. The subshell makes
     // the whole command one status, so under set -e, a workflow step's shell
-    // included, any non-zero exit stops the script, a failed rev-parse too. The flags and pathspecs match scan(), so the command
-    // and the inventory read the same files: --untracked skips what .gitignore
-    // names, and a binary match still counts, because -q exits on any match.
+    // included, any non-zero exit stops the script, a failed rev-parse too. The
+    // flags and pathspecs match scan(), so the command and the inventory read
+    // the same files: --untracked skips what .gitignore names, and a binary
+    // match still counts, because -q exits on any match.
     `( top=$(git rev-parse --show-toplevel) && { rc=0; git -C "$top" grep -q --untracked -F '${MARKER}' -- '${EXCLUDE}' || rc=$?; test "$rc" -eq 1; } )`,
     '```',
   );
